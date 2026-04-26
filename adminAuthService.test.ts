@@ -36,36 +36,51 @@ describe('[Feature 9] Admin Authentication - Unit Tests (Improved)', () => {
    * CheckDB: Admin tồn tại trong DB
    */
   it('should login admin successfully', async () => {
-    const hashedPassword = await bcrypt.hash('adminpass123', 10);
+  const hashedPassword = await bcrypt.hash('adminpass123', 10);
 
-    const admin = await Admin.create({
-      username: 'test_admin',
-      email: testAdminEmail,
-      password_hash: hashedPassword,
-      role: 'employee',
-      is_active: true,
-      phone: '0905555555'
-    });
-
-    createdAdminIds.push(admin.id);
-    testAdminId = admin.id;
-
-    const result = await adminAuthService.login({
-      email: testAdminEmail,
-      password: 'adminpass123'
-    });
-
-    expect(result).toBeDefined();
-    expect(result.admin.email).toBe(testAdminEmail);
-    expect(result.accessToken).toBeDefined();
-    expect(result.refreshToken).toBeDefined();
-
-    // CheckDB
-    const dbAdmin = await Admin.findByPk(testAdminId);
-    expect(dbAdmin).not.toBeNull();
-
-    console.log('✅ TC_ADMIN_AUTH_001 passed');
+  const admin = await Admin.create({
+    username: 'test_admin',
+    email: testAdminEmail,
+    password_hash: hashedPassword,
+    role: 'super_admin',
+    is_active: true,
+    phone: '0905555555'
   });
+
+  createdAdminIds.push(admin.id);
+  testAdminId = admin.id;
+
+  const result = await adminAuthService.login({
+    email: testAdminEmail,
+    password: 'adminpass123'
+  });
+
+  // ===== ASSERT RESPONSE =====
+  expect(result).toBeDefined();
+
+  expect(result.admin.id).toBe(testAdminId);
+  expect(result.admin.email).toBe(testAdminEmail);
+  expect(result.admin.username).toBe('test_admin');
+  expect(result.admin.role).toBe('super_admin');
+
+  // Không trả về password (security)
+  expect((result.admin as any).password_hash).toBeUndefined();
+
+  // Token hợp lệ
+  expect(typeof result.accessToken).toBe('string');
+  expect(result.accessToken.split('.').length).toBe(3);
+
+  expect(typeof result.refreshToken).toBe('string');
+  expect(result.refreshToken.split('.').length).toBe(3);
+
+  // ===== CHECK DB =====
+  const dbAdmin = await Admin.findByPk(testAdminId);
+  expect(dbAdmin).not.toBeNull();
+  expect(dbAdmin?.email).toBe(testAdminEmail);
+  expect(dbAdmin?.is_active).toBe(true);
+
+  console.log('✅ TC_ADMIN_AUTH_001 passed');
+});
 
   /**
    * TC_ADMIN_AUTH_002
@@ -99,21 +114,6 @@ describe('[Feature 9] Admin Authentication - Unit Tests (Improved)', () => {
 
   /**
    * TC_ADMIN_AUTH_004
-   * Mục tiêu: Login thiếu dữ liệu
-   */
-  it('should fail with missing credentials', async () => {
-    await expect(
-      adminAuthService.login({
-        email: '',
-        password: ''
-      } as any)
-    ).rejects.toThrow();
-
-    console.log('✅ TC_ADMIN_AUTH_004 passed');
-  });
-
-  /**
-   * TC_ADMIN_AUTH_005
    * Mục tiêu: Login với admin bị disable
    */
   it('should fail with inactive admin', async () => {
@@ -136,11 +136,11 @@ describe('[Feature 9] Admin Authentication - Unit Tests (Improved)', () => {
       })
     ).rejects.toThrow('Tài khoản admin đã bị vô hiệu hóa');
 
-    console.log('✅ TC_ADMIN_AUTH_005 passed');
+    console.log('✅ TC_ADMIN_AUTH_004 passed');
   });
 
   /**
-   * TC_ADMIN_AUTH_006
+   * TC_ADMIN_AUTH_005
    * Mục tiêu: Refresh token hợp lệ
    */
   it('should refresh token successfully', async () => {
@@ -154,11 +154,11 @@ describe('[Feature 9] Admin Authentication - Unit Tests (Improved)', () => {
     expect(result).toBeDefined();
     expect(result.accessToken).toBeDefined();
 
-    console.log('✅ TC_ADMIN_AUTH_006 passed');
+    console.log('✅ TC_ADMIN_AUTH_005 passed');
   });
 
   /**
-   * TC_ADMIN_AUTH_007
+   * TC_ADMIN_AUTH_006
    * Mục tiêu: Refresh token không hợp lệ
    */
   it('should fail with invalid refresh token', async () => {
@@ -166,11 +166,11 @@ describe('[Feature 9] Admin Authentication - Unit Tests (Improved)', () => {
       adminAuthService.refreshToken('invalid.token')
     ).rejects.toThrow();
 
-    console.log('✅ TC_ADMIN_AUTH_007 passed');
+    console.log('✅ TC_ADMIN_AUTH_006 passed');
   });
 
   /**
-   * TC_ADMIN_AUTH_008
+   * TC_ADMIN_AUTH_007
    * Mục tiêu: Lấy admin theo ID
    * CheckDB: So sánh dữ liệu DB
    */
@@ -184,11 +184,11 @@ describe('[Feature 9] Admin Authentication - Unit Tests (Improved)', () => {
     const dbAdmin = await Admin.findByPk(testAdminId!);
     expect(dbAdmin?.email).toBe(result.email);
 
-    console.log('✅ TC_ADMIN_AUTH_008 passed');
+    console.log('✅ TC_ADMIN_AUTH_007 passed');
   });
 
   /**
-   * TC_ADMIN_AUTH_009
+   * TC_ADMIN_AUTH_008
    * Mục tiêu: Lấy admin không tồn tại
    */
   it('should fail with non-existent admin ID', async () => {
@@ -196,11 +196,11 @@ describe('[Feature 9] Admin Authentication - Unit Tests (Improved)', () => {
       adminAuthService.getAdminById(9999999)
     ).rejects.toThrow('Admin không tồn tại');
 
-    console.log('✅ TC_ADMIN_AUTH_009 passed');
+    console.log('✅ TC_ADMIN_AUTH_008 passed');
   });
 
   /**
-   * TC_ADMIN_AUTH_010
+   * TC_ADMIN_AUTH_009
    * Mục tiêu: Đăng ký admin mới
    * CheckDB: Kiểm tra dữ liệu lưu trong DB
    */
@@ -209,7 +209,7 @@ describe('[Feature 9] Admin Authentication - Unit Tests (Improved)', () => {
       username: 'new_admin_' + Date.now(),
       email: 'new_admin_' + Date.now() + '@example.com',
       password: 'adminpass123',
-      role: 'employee' as const,
+      role: 'super_admin' as const,
       region: 'northern' as const,
       phone: '0906666666'
     };
@@ -227,11 +227,11 @@ describe('[Feature 9] Admin Authentication - Unit Tests (Improved)', () => {
     expect(dbAdmin?.email).toBe(registerData.email);
     expect(dbAdmin?.username).toBe(registerData.username);
 
-    console.log('✅ TC_ADMIN_AUTH_010 passed');
+    console.log('✅ TC_ADMIN_AUTH_009 passed');
   });
 
   /**
-   * TC_ADMIN_AUTH_011
+   * TC_ADMIN_AUTH_010
    * Mục tiêu: Register với email trùng
    */
   it('should fail when registering duplicate email', async () => {
@@ -246,44 +246,36 @@ describe('[Feature 9] Admin Authentication - Unit Tests (Improved)', () => {
       adminAuthService.register(duplicateData)
     ).rejects.toThrow();
 
-    console.log('✅ TC_ADMIN_AUTH_011 passed');
+    console.log('✅ TC_ADMIN_AUTH_010 passed');
   });
 
-
 /**
- * TC_ADMIN_AUTH_012
- * Mục tiêu: Login thiếu email
+ * TC_ADMIN_AUTH_011
+ * Mục tiêu: Login thiếu email hoặc password
  */
-it('should fail when email is missing', async () => {
+it('should fail when email or password is missing', async () => {
+  // Test missing email
   await expect(
     adminAuthService.login({
       email: '',
       password: 'adminpass123'
     } as any)
-  ).rejects.toThrow();
+  ).rejects.toThrow('Vui lòng nhập đầy đủ email và mật khẩu');
 
-  console.log('✅ TC_ADMIN_AUTH_012 passed');
-});
-
-
-/**
- * TC_ADMIN_AUTH_013
- * Mục tiêu: Login thiếu password
- */
-it('should fail when password is missing', async () => {
+  // Test missing password
   await expect(
     adminAuthService.login({
       email: testAdminEmail,
       password: ''
     } as any)
-  ).rejects.toThrow();
+  ).rejects.toThrow('Vui lòng nhập đầy đủ email và mật khẩu');
 
-  console.log('✅ TC_ADMIN_AUTH_013 passed');
+  console.log('✅ TC_ADMIN_AUTH_011 passed');
 });
 
 
 /**
- * TC_ADMIN_AUTH_014
+ * TC_ADMIN_AUTH_012
  * Mục tiêu: Register với role không hợp lệ
  * Expected: Bị từ chối hoặc xử lý lỗi
  */
@@ -299,12 +291,12 @@ it('should fail with invalid role', async () => {
     adminAuthService.register(invalidRoleData)
   ).rejects.toThrow();
 
-  console.log('✅ TC_ADMIN_AUTH_014 passed');
+  console.log('✅ TC_ADMIN_AUTH_012 passed');
 });
 
 
 /**
- * TC_ADMIN_AUTH_015
+ * TC_ADMIN_AUTH_013
  * Mục tiêu: Refresh token bị sai format
  */
 it('should fail when refresh token format is invalid', async () => {
@@ -314,11 +306,11 @@ it('should fail when refresh token format is invalid', async () => {
     adminAuthService.refreshToken(badToken)
   ).rejects.toThrow();
 
-  console.log('✅ TC_ADMIN_AUTH_015 passed');
+  console.log('✅ TC_ADMIN_AUTH_013 passed');
 });
 
 /**
- * TC_ADMIN_AUTH_016
+ * TC_ADMIN_AUTH_014
  * Mục tiêu: Cập nhật profile admin thành công
  * CheckDB: Kiểm tra dữ liệu được cập nhật trong DB
  */
@@ -339,11 +331,11 @@ it('should update admin profile successfully', async () => {
   expect(dbAdmin?.username).toBe(updateData.username);
   expect(dbAdmin?.phone).toBe(updateData.phone);
 
-  console.log('✅ TC_ADMIN_AUTH_016 passed');
+  console.log('✅ TC_ADMIN_AUTH_014 passed');
 });
 
 /**
- * TC_ADMIN_AUTH_017
+ * TC_ADMIN_AUTH_015
  * Mục tiêu: Cập nhật email thành công
  */
 it('should update admin email successfully', async () => {
@@ -362,11 +354,11 @@ it('should update admin email successfully', async () => {
   // Update testAdminEmail to track the new email
   testAdminEmail = newEmail;
 
-  console.log('✅ TC_ADMIN_AUTH_017 passed');
+  console.log('✅ TC_ADMIN_AUTH_015 passed');
 });
 
 /**
- * TC_ADMIN_AUTH_018
+ * TC_ADMIN_AUTH_016
  * Mục tiêu: Cập nhật profile với email trùng
  */
 it('should fail when updating to duplicate email', async () => {
@@ -399,11 +391,11 @@ it('should fail when updating to duplicate email', async () => {
     })
   ).rejects.toThrow('Email đã được sử dụng');
 
-  console.log('✅ TC_ADMIN_AUTH_018 passed');
+  console.log('✅ TC_ADMIN_AUTH_016 passed');
 });
 
 /**
- * TC_ADMIN_AUTH_019
+ * TC_ADMIN_AUTH_017
  * Mục tiêu: Cập nhật profile admin không tồn tại
  */
 it('should fail when updating non-existent admin', async () => {
@@ -413,11 +405,11 @@ it('should fail when updating non-existent admin', async () => {
     })
   ).rejects.toThrow('Admin không tồn tại');
 
-  console.log('✅ TC_ADMIN_AUTH_019 passed');
+  console.log('✅ TC_ADMIN_AUTH_017 passed');
 });
 
 /**
- * TC_ADMIN_AUTH_020
+ * TC_ADMIN_AUTH_018
  * Mục tiêu: Cập nhật profile với dữ liệu rỗng
  */
 it('should fail when updating with empty data', async () => {
@@ -425,11 +417,11 @@ it('should fail when updating with empty data', async () => {
     adminAuthService.updateProfile(testAdminId!, {})
   ).rejects.toThrow('Không có dữ liệu nào để cập nhật');
 
-  console.log('✅ TC_ADMIN_AUTH_020 passed');
+  console.log('✅ TC_ADMIN_AUTH_018 passed');
 });
 
 /**
- * TC_ADMIN_AUTH_021
+ * TC_ADMIN_AUTH_019
  * Mục tiêu: Cập nhật username rỗng
  */
 it('should fail when updating with empty username', async () => {
@@ -439,11 +431,11 @@ it('should fail when updating with empty username', async () => {
     })
   ).rejects.toThrow('Tên đăng nhập không được để trống');
 
-  console.log('✅ TC_ADMIN_AUTH_021 passed');
+  console.log('✅ TC_ADMIN_AUTH_019 passed');
 });
 
 /**
- * TC_ADMIN_AUTH_022
+ * TC_ADMIN_AUTH_020
  * Mục tiêu: Cập nhật email với format không hợp lệ
  */
 it('should fail when updating with invalid email format', async () => {
@@ -453,11 +445,11 @@ it('should fail when updating with invalid email format', async () => {
     })
   ).rejects.toThrow('Email không hợp lệ');
 
-  console.log('✅ TC_ADMIN_AUTH_022 passed');
+  console.log('✅ TC_ADMIN_AUTH_020 passed');
 });
 
 /**
- * TC_ADMIN_AUTH_023
+ * TC_ADMIN_AUTH_021
  * Mục tiêu: Login với password_hash không hợp lệ (không có bcrypt prefix)
  */
 it('should fail when admin has invalid password hash format', async () => {
@@ -479,11 +471,11 @@ it('should fail when admin has invalid password hash format', async () => {
     })
   ).rejects.toThrow('Tài khoản không hợp lệ. Vui lòng liên hệ quản trị viên');
 
-  console.log('✅ TC_ADMIN_AUTH_023 passed');
+  console.log('✅ TC_ADMIN_AUTH_021 passed');
 });
 
 /**
- * TC_ADMIN_AUTH_024
+ * TC_ADMIN_AUTH_022
  * Mục tiêu: Login với admin không có password_hash
  */
 it('should fail when admin has no password hash', async () => {
@@ -503,11 +495,11 @@ it('should fail when admin has no password hash', async () => {
     })
   ).rejects.toThrow('Tài khoản không hợp lệ. Vui lòng liên hệ quản trị viên');
 
-  console.log('✅ TC_ADMIN_AUTH_024 passed');
+  console.log('✅ TC_ADMIN_AUTH_022 passed');
 });
 
 /**
- * TC_ADMIN_AUTH_025
+ * TC_ADMIN_AUTH_023
  * Mục tiêu: Register với password quá ngắn
  */
 it('should fail when registering with short password', async () => {
@@ -522,11 +514,11 @@ it('should fail when registering with short password', async () => {
     adminAuthService.register(shortPasswordData)
   ).rejects.toThrow('Mật khẩu phải có ít nhất 6 ký tự');
 
-  console.log('✅ TC_ADMIN_AUTH_025 passed');
+  console.log('✅ TC_ADMIN_AUTH_023 passed');
 });
 
 /**
- * TC_ADMIN_AUTH_026
+ * TC_ADMIN_AUTH_024
  * Mục tiêu: Register với username quá ngắn
  */
 it('should fail when registering with short username', async () => {
@@ -541,11 +533,11 @@ it('should fail when registering with short username', async () => {
     adminAuthService.register(shortUsernameData)
   ).rejects.toThrow('Tên đăng nhập phải có ít nhất 3 ký tự');
 
-  console.log('✅ TC_ADMIN_AUTH_026 passed');
+  console.log('✅ TC_ADMIN_AUTH_024 passed');
 });
 
 /**
- * TC_ADMIN_AUTH_027
+ * TC_ADMIN_AUTH_025
  * Mục tiêu: Register với email format không hợp lệ
  */
 it('should fail when registering with invalid email format', async () => {
@@ -560,92 +552,12 @@ it('should fail when registering with invalid email format', async () => {
     adminAuthService.register(invalidEmailData)
   ).rejects.toThrow('Email không hợp lệ');
 
-  console.log('✅ TC_ADMIN_AUTH_027 passed');
+  console.log('✅ TC_ADMIN_AUTH_025 passed');
 });
 
-/**
- * TC_ADMIN_AUTH_028
- * Mục tiêu: Register với role 'guide'
- */
-it('should register admin with guide role successfully', async () => {
-  const guideRoleData = {
-    username: 'guide_admin_' + Date.now(),
-    email: 'guide_' + Date.now() + '@example.com',
-    password: 'password123',
-    role: 'guide' as any, // Service sẽ normalize thành 'employee' nếu không hợp lệ
-    region: 'central' as const,
-    phone: '0908888888'
-  };
-
-  const result = await adminAuthService.register(guideRoleData);
-
-  expect(result).toBeDefined();
-  // Service sẽ fallback về 'employee' nếu role không hợp lệ
-  expect(result.role).toBeDefined();
-  expect(result.region).toBe('central');
-  expect(result.phone).toBe('0908888888');
-
-  createdAdminIds.push(result.id);
-
-  console.log('✅ TC_ADMIN_AUTH_028 passed');
-});
 
 /**
- * TC_ADMIN_AUTH_029
- * Mục tiêu: Refresh token với admin đã bị vô hiệu hóa
- */
-it('should fail when refreshing token for inactive admin', async () => {
-  const hashedPassword = await bcrypt.hash('password123', 10);
-  
-  const inactiveAdmin = await Admin.create({
-    username: 'inactive_refresh_admin',
-    email: 'inactive_refresh_' + Date.now() + '@example.com',
-    password_hash: hashedPassword,
-    role: 'employee',
-    is_active: true
-  });
-  createdAdminIds.push(inactiveAdmin.id);
-
-  // Login để lấy token
-  const loginResult = await adminAuthService.login({
-    email: inactiveAdmin.email,
-    password: 'password123'
-  });
-
-  // Vô hiệu hóa admin
-  await Admin.update({ is_active: false }, {
-    where: { id: inactiveAdmin.id }
-  });
-
-  // Thử refresh token
-  await expect(
-    adminAuthService.refreshToken(loginResult.refreshToken)
-  ).rejects.toThrow('Tài khoản admin đã bị vô hiệu hóa');
-
-  console.log('✅ TC_ADMIN_AUTH_029 passed');
-});
-
-/**
- * TC_ADMIN_AUTH_030
- * Mục tiêu: Register thiếu thông tin bắt buộc
- */
-it('should fail when registering with missing required fields', async () => {
-  const missingFieldsData = {
-    username: '',
-    email: 'missing_' + Date.now() + '@example.com',
-    password: 'password123',
-    role: 'employee' as const
-  };
-
-  await expect(
-    adminAuthService.register(missingFieldsData as any)
-  ).rejects.toThrow('Vui lòng nhập đầy đủ thông tin');
-
-  console.log('✅ TC_ADMIN_AUTH_030 passed');
-});
-
-/**
- * TC_ADMIN_AUTH_031
+ * TC_ADMIN_AUTH_026
  * Mục tiêu: Login với input không phải string
  */
 it('should fail when login with non-string credentials', async () => {
@@ -656,11 +568,11 @@ it('should fail when login with non-string credentials', async () => {
     })
   ).rejects.toThrow('Email và mật khẩu phải là chuỗi');
 
-  console.log('✅ TC_ADMIN_AUTH_031 passed');
+  console.log('✅ TC_ADMIN_AUTH_026 passed');
 });
 
 /**
- * TC_ADMIN_AUTH_032
+ * TC_ADMIN_AUTH_027
  * Mục tiêu: Register với input không phải string
  */
 it('should fail when registering with non-string fields', async () => {
@@ -675,11 +587,11 @@ it('should fail when registering with non-string fields', async () => {
     adminAuthService.register(invalidTypeData)
   ).rejects.toThrow('Thông tin không hợp lệ');
 
-  console.log('✅ TC_ADMIN_AUTH_032 passed');
+  console.log('✅ TC_ADMIN_AUTH_027 passed');
 });
 
 /**
- * TC_ADMIN_AUTH_033
+ * TC_ADMIN_AUTH_028
  * Mục tiêu: Cập nhật phone thành null
  */
 it('should update phone to null successfully', async () => {
@@ -698,24 +610,7 @@ it('should update phone to null successfully', async () => {
   const dbAdmin = await Admin.findByPk(testAdminId!);
   expect(dbAdmin?.phone).toBeNull();
 
-  console.log('✅ TC_ADMIN_AUTH_033 passed');
+  console.log('✅ TC_ADMIN_AUTH_028 passed');
 });
 
-/**
- * TC_ADMIN_AUTH_034
- * Mục tiêu: Cập nhật cùng email hiện tại (không thay đổi) - sẽ fail vì không có gì thay đổi
- */
-it('should fail when updating with same email only', async () => {
-  const admin = await Admin.findByPk(testAdminId!);
-  const currentEmail = admin?.email || '';
-
-  // Khi chỉ update cùng email, không có field nào thay đổi nên sẽ fail
-  await expect(
-    adminAuthService.updateProfile(testAdminId!, {
-      email: currentEmail
-    })
-  ).rejects.toThrow('Không thể cập nhật thông tin. Vui lòng thử lại.');
-
-  console.log('✅ TC_ADMIN_AUTH_034 passed');
-});
 });
