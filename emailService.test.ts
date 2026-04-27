@@ -1,21 +1,107 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import emailService from '../services/emailService';
+import Order from '../models/Order';
+import User from '../models/User';
+import Tour from '../models/Tour';
+import Ticket from '../models/Ticket';
+import Admin from '../models/Admin';
+import bcrypt from 'bcryptjs';
+
+// Mock nodemailer để không gửi email thật
+vi.mock('nodemailer', () => ({
+  default: {
+    createTransport: vi.fn(() => ({
+      sendMail: vi.fn().mockResolvedValue({ messageId: 'test-message-id' })
+    }))
+  }
+}));
+
+// Mock google-auth-library
+vi.mock('google-auth-library', () => {
+  const mockOAuth2Client = {
+    setCredentials: () => {},
+    getAccessToken: () => Promise.resolve('mock-access-token')
+  };
+  return {
+    OAuth2Client: function() {
+      return mockOAuth2Client;
+    }
+  };
+});
 
 /**
  * Feature 13: Email Service - Comprehensive Unit Tests
  * ✅ Test Case IDs rõ ràng
- * ✅ CheckDB: Xác minh database queries (read-only)
- * ✅ Rollback: Không cần (email service không thay đổi DB)
- * ❗ Tests có cả PASS và edge cases thực tế
+ * ✅ CheckDB: Xác minh database queries
+ * ✅ Rollback: Khôi phục DB sau tests
  * 
  * Services được test:
  * - sendPaymentConfirmationEmail()
  * - sendCancellationEmail()
- * 
- * Lưu ý: Email service không thay đổi DB, chỉ đọc data và gửi email
- * Tests sẽ tập trung vào error handling và data validation
+ * - getOrderDetails() helper
+ * - createTicketTableHTML() helper
+ * - formatCurrency() helper
+ * - formatDate() helper
  */
 describe('[Feature 13] Email Service - Comprehensive Unit Tests', () => {
+  let testUserId: number | undefined;
+  let testTourId: number | undefined;
+  let testOrderId: number | undefined;
+  let createdUsers: number[] = [];
+  let createdTours: number[] = [];
+  let createdOrders: number[] = [];
+  let createdTickets: number[] = [];
+
+  beforeAll(async () => {
+    console.log('📧 Bắt đầu kiểm thử Email Service...');
+
+    // Tạo user test
+    const hashedPassword = await bcrypt.hash('password123', 10);
+    const user = await User.create({
+      username: 'email_test_user',
+      email: 'email_test_' + Date.now() + '@example.com',
+      password_hash: hashedPassword,
+      phone: '0901111111',
+      is_active: true
+    });
+    testUserId = user.id;
+    createdUsers.push(testUserId);
+
+    // Tạo tour test
+    const tour = await Tour.create({
+      title: 'Email Test Tour ' + Date.now(),
+      destination: 'HN',
+      departure: 'HCM',
+      start_date: new Date('2026-12-01'),
+      end_date: new Date('2026-12-05'),
+      price: 3000000,
+      capacity: 50,
+      latitude: 0,
+      longitude: 0,
+      is_active: true
+    });
+    testTourId = tour.id;
+    createdTours.push(testTourId);
+  });
+
+  afterAll(async () => {
+    console.log('🔄 Starting Rollback...');
+    
+    for (const ticketId of createdTickets) {
+      await Ticket.destroy({ where: { id: ticketId } }).catch(() => {});
+    }
+    for (const orderId of createdOrders) {
+      await Order.destroy({ where: { id: orderId } }).catch(() => {});
+    }
+    for (const tourId of createdTours) {
+      await Tour.destroy({ where: { id: tourId } }).catch(() => {});
+    }
+    for (const userId of createdUsers) {
+      await User.destroy({ where: { id: userId } }).catch(() => {});
+    }
+    
+    console.log('✅ Rollback complete: DB restored');
+  });
   /**
    * [TC_EMAIL_001] Kiểm tra email service tồn tại
    * Mục tiêu: Verify emailService được export đúng
@@ -66,324 +152,228 @@ describe('[Feature 13] Email Service - Comprehensive Unit Tests', () => {
 
   /**
    * [TC_EMAIL_004] Gửi payment confirmation email với orderId không tồn tại
-   * Mục tiêu: Kiểm tra error handling khi order không tồn tại
-   * Input: orderId = 9999999 (không tồn tại)
-   * Expected: Ném lỗi "Không tìm thấy đơn hàng"
-   * CheckDB: Verify order không tồn tại trong DB
-   * Rollback: Không cần (fail)
    */
   it('[TC_EMAIL_004] should fail when sending payment confirmation for non-existent order', async () => {
-    const nonExistentOrderId = 9999999;
-
-    // CheckDB: Verify order doesn't exist
-    const Order = (await import('../models/Order')).default;
-    const orderInDb = await Order.findByPk(nonExistentOrderId);
-    expect(orderInDb).toBeNull();
-
-    // Attempt to send email for non-existent order
     await expect(
-      emailService.sendPaymentConfirmationEmail(nonExistentOrderId)
-    ).rejects.toThrow();
+      emailService.sendPaymentConfirmationEmail(9999999)
+    ).rejects.toThrow('Không tìm thấy đơn hàng');
 
     console.log('✅ TC_EMAIL_004: Correctly handled non-existent order');
   });
 
   /**
    * [TC_EMAIL_005] Gửi cancellation email với orderId không tồn tại
-   * Mục tiêu: Kiểm tra error handling khi order không tồn tại
-   * Input: orderId = 9999999 (không tồn tại)
-   * Expected: Ném lỗi "Không tìm thấy đơn hàng"
-   * CheckDB: Verify order không tồn tại
-   * Rollback: Không cần
    */
   it('[TC_EMAIL_005] should fail when sending cancellation for non-existent order', async () => {
-    const nonExistentOrderId = 9999999;
-
-    // CheckDB: Verify order doesn't exist
-    const Order = (await import('../models/Order')).default;
-    const orderInDb = await Order.findByPk(nonExistentOrderId);
-    expect(orderInDb).toBeNull();
-
     await expect(
-      emailService.sendCancellationEmail(nonExistentOrderId)
-    ).rejects.toThrow();
+      emailService.sendCancellationEmail(9999999)
+    ).rejects.toThrow('Không tìm thấy đơn hàng');
 
     console.log('✅ TC_EMAIL_005: Correctly handled non-existent order');
   });
 
   /**
-   * [TC_EMAIL_006] Gửi payment confirmation email với orderId = 0
-   * Mục tiêu: Kiểm tra validation khi orderId không hợp lệ
-   * Input: orderId = 0 (invalid)
-   * Expected: Ném lỗi validation
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
+   * [TC_EMAIL_006] Gộp các invalid orderId tests
    */
-  it('[TC_EMAIL_006] should fail when orderId is zero', async () => {
-    const invalidOrderId = 0;
-
+  it('[TC_EMAIL_006] should fail with invalid orderId values', async () => {
+    // Test zero
     await expect(
-      emailService.sendPaymentConfirmationEmail(invalidOrderId)
+      emailService.sendPaymentConfirmationEmail(0)
     ).rejects.toThrow();
 
-    console.log('✅ TC_EMAIL_006: Correctly rejected zero orderId');
-  });
-
-  /**
-   * [TC_EMAIL_007] Gửi payment confirmation email với orderId âm
-   * Mục tiêu: Kiểm tra validation khi orderId < 0
-   * Input: orderId = -1 (invalid)
-   * Expected: Ném lỗi validation
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_EMAIL_007] should fail when orderId is negative', async () => {
-    const negativeOrderId = -1;
-
+    // Test negative
     await expect(
-      emailService.sendPaymentConfirmationEmail(negativeOrderId)
+      emailService.sendPaymentConfirmationEmail(-1)
     ).rejects.toThrow();
 
-    console.log('✅ TC_EMAIL_007: Correctly rejected negative orderId');
-  });
-
-  /**
-   * [TC_EMAIL_008] Gửi cancellation email với orderId âm
-   * Mục tiêu: Kiểm tra validation khi orderId < 0
-   * Input: orderId = -1 (invalid)
-   * Expected: Ném lỗi validation
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_EMAIL_008] should fail when cancellation orderId is negative', async () => {
-    const negativeOrderId = -1;
-
     await expect(
-      emailService.sendCancellationEmail(negativeOrderId)
+      emailService.sendCancellationEmail(-1)
     ).rejects.toThrow();
 
-    console.log('✅ TC_EMAIL_008: Correctly rejected negative orderId');
-  });
-
-  /**
-   * [TC_EMAIL_009] Kiểm tra service chỉ có 2 methods
-   * Mục tiêu: Verify emailService không export methods khác
-   * Input: Không có
-   * Expected: Chỉ có sendPaymentConfirmationEmail và sendCancellationEmail
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_EMAIL_009] should have only expected methods', async () => {
-    const expectedMethods = ['sendPaymentConfirmationEmail', 'sendCancellationEmail'];
-    const serviceMethods = Object.keys(emailService);
-
-    // Verify all expected methods exist
-    for (const method of expectedMethods) {
-      expect(serviceMethods).toContain(method);
-    }
-
-    console.log(`✅ TC_EMAIL_009: Service has ${serviceMethods.length} methods`);
-  });
-
-  /**
-   * [TC_EMAIL_010] Email service không có method sendWelcomeEmail
-   * Mục tiêu: Verify service không có method không tồn tại
-   * Input: Không có
-   * Expected: sendWelcomeEmail không tồn tại hoặc undefined
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_EMAIL_010] should not have sendWelcomeEmail method', async () => {
-    const nonExistentMethod = 'sendWelcomeEmail';
-    
-    // Method should not exist or not be a function
-    const hasMethod = typeof (emailService as any)[nonExistentMethod] === 'function';
-    expect(hasMethod).toBe(false);
-
-    console.log(`✅ TC_EMAIL_010: ${nonExistentMethod} does not exist (correct)`);
-  });
-
-  /**
-   * [TC_EMAIL_011] Gửi payment confirmation email với orderId = null
-   * Mục tiêu: Kiểm tra validation khi orderId null
-   * Input: orderId = null (invalid type)
-   * Expected: Ném lỗi type error hoặc validation error
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_EMAIL_011] should fail when orderId is null', async () => {
+    // Test null
     await expect(
       emailService.sendPaymentConfirmationEmail(null as any)
     ).rejects.toThrow();
 
-    console.log('✅ TC_EMAIL_011: Correctly rejected null orderId');
-  });
-
-  /**
-   * [TC_EMAIL_012] Gửi payment confirmation email với orderId = undefined
-   * Mục tiêu: Kiểm tra validation khi orderId undefined
-   * Input: orderId = undefined
-   * Expected: Ném lỗi type error
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_EMAIL_012] should fail when orderId is undefined', async () => {
-    await expect(
-      emailService.sendPaymentConfirmationEmail(undefined as any)
-    ).rejects.toThrow();
-
-    console.log('✅ TC_EMAIL_012: Correctly rejected undefined orderId');
-  });
-
-  /**
-   * [TC_EMAIL_013] Gửi cancellation email với orderId = null
-   * Mục tiêu: Kiểm tra validation khi orderId null
-   * Input: orderId = null
-   * Expected: Ném lỗi
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_EMAIL_013] should fail when cancellation orderId is null', async () => {
     await expect(
       emailService.sendCancellationEmail(null as any)
     ).rejects.toThrow();
 
-    console.log('✅ TC_EMAIL_013: Correctly rejected null orderId');
-  });
+    // Test undefined
+    await expect(
+      emailService.sendPaymentConfirmationEmail(undefined as any)
+    ).rejects.toThrow();
 
-  /**
-   * [TC_EMAIL_014] Gửi cancellation email với orderId = undefined
-   * Mục tiêu: Kiểm tra validation khi orderId undefined
-   * Input: orderId = undefined
-   * Expected: Ném lỗi
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_EMAIL_014] should fail when cancellation orderId is undefined', async () => {
     await expect(
       emailService.sendCancellationEmail(undefined as any)
     ).rejects.toThrow();
 
-    console.log('✅ TC_EMAIL_014: Correctly rejected undefined orderId');
+    console.log('✅ TC_EMAIL_006: All invalid orderId cases handled');
   });
 
   /**
-   * [TC_EMAIL_015] Kiểm tra email service không thay đổi database
-   * Mục tiêu: Verify email service là read-only
-   * Input: Không có
-   * Expected: Không có methods thay đổi DB (create, update, delete)
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
+   * [TC_EMAIL_007] Gửi payment confirmation email thành công (với mock)
    */
-  it('[TC_EMAIL_015] should not have database modification methods', async () => {
-    const serviceMethods = Object.keys(emailService);
-    
-    // Verify no destructive methods
-    const destructiveKeywords = ['create', 'delete', 'update', 'destroy', 'remove'];
-    
-    for (const method of serviceMethods) {
-      const hasDestructiveKeyword = destructiveKeywords.some(keyword => 
-        method.toLowerCase().includes(keyword)
-      );
-      expect(hasDestructiveKeyword).toBe(false);
+  it('[TC_EMAIL_007] should send payment confirmation email successfully', async () => {
+    // Tạo order
+    const order = await Order.create({
+      user_id: testUserId,
+      tour_id: testTourId,
+      quantity: 2,
+      total_price: 6000000,
+      status: 'confirmed',
+      is_paid: true,
+      is_review: false,
+      payment_url: 'http://test.com',
+      start_date: new Date('2026-12-01'),
+      end_date: new Date('2026-12-05')
+    });
+    createdOrders.push(order.id);
+    testOrderId = order.id;
+
+    // Tạo tickets
+    const ticket1 = await Ticket.create({
+      order_id: order.id,
+      user_id: testUserId!,
+      ticket_code: 'TICKET001',
+      valid_from: new Date('2026-12-01'),
+      valid_until: new Date('2026-12-05')
+    });
+    createdTickets.push(ticket1.id);
+
+    const ticket2 = await Ticket.create({
+      order_id: order.id,
+      user_id: testUserId!,
+      ticket_code: 'TICKET002',
+      valid_from: new Date('2026-12-01'),
+      valid_until: new Date('2026-12-05')
+    });
+    createdTickets.push(ticket2.id);
+
+    // Send email (sẽ dùng mock)
+    await emailService.sendPaymentConfirmationEmail(order.id);
+
+    console.log('✅ TC_EMAIL_007: Payment confirmation email sent successfully');
+  });
+
+  /**
+   * [TC_EMAIL_008] Gửi cancellation email thành công (với mock)
+   */
+  it('[TC_EMAIL_008] should send cancellation email successfully', async () => {
+    if (!testOrderId) {
+      throw new Error('Order chưa được tạo');
     }
 
-    console.log('✅ TC_EMAIL_015: Service has no destructive methods (read-only)');
+    // Send cancellation email (sẽ dùng mock)
+    await emailService.sendCancellationEmail(testOrderId);
+
+    console.log('✅ TC_EMAIL_008: Cancellation email sent successfully');
   });
 
   /**
-   * [TC_EMAIL_016] Gửi payment confirmation với orderId kiểu string
-   * Mục tiêu: Kiểm tra type validation
-   * Input: orderId = '123' (string thay vì number)
-   * Expected: Có thể fail hoặc auto-convert (tùy implementation)
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
+   * [TC_EMAIL_009] Gửi payment confirmation với order có guide
    */
-  it('[TC_EMAIL_016] should handle string orderId', async () => {
-    const stringOrderId = '123';
+  it('[TC_EMAIL_009] should send payment confirmation with guide info', async () => {
+    // Tạo admin/guide
+    const hashedPassword = await bcrypt.hash('password123', 10);
+    const guideEmail = 'guide_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9) + '@example.com';
+    const guide = await Admin.create({
+      username: 'email_test_guide_' + Date.now(),
+      email: guideEmail,
+      password_hash: hashedPassword,
+      phone: '0902222222',
+      role: 'guide',
+      is_active: true
+    });
 
-    try {
-      await emailService.sendPaymentConfirmationEmail(stringOrderId as any);
-      console.log('⚠️ TC_EMAIL_016: Service accepts string orderId (auto-converts)');
-    } catch (error: any) {
-      console.log('✅ TC_EMAIL_016: Service rejects string orderId (strict type)');
-    }
+    // Tạo order với guide_id
+    const orderWithGuide = await Order.create({
+      user_id: testUserId,
+      tour_id: testTourId,
+      quantity: 1,
+      total_price: 3000000,
+      status: 'confirmed',
+      is_paid: true,
+      is_review: false,
+      payment_url: 'http://test.com',
+      start_date: new Date('2026-12-01'),
+      end_date: new Date('2026-12-05'),
+      guide_id: guide.id
+    });
+    createdOrders.push(orderWithGuide.id);
+
+    // Send email
+    await emailService.sendPaymentConfirmationEmail(orderWithGuide.id);
+
+    // Cleanup guide
+    await Admin.destroy({ where: { id: guide.id } }).catch(() => {});
+
+    console.log('✅ TC_EMAIL_009: Payment confirmation with guide sent');
   });
 
   /**
-   * [TC_EMAIL_017] Gửi cancellation email với orderId kiểu string
-   * Mục tiêu: Kiểm tra type validation
-   * Input: orderId = '456' (string)
-   * Expected: Có thể fail hoặc auto-convert
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
+   * [TC_EMAIL_010] Gửi email với order không có tickets
    */
-  it('[TC_EMAIL_017] should handle string orderId for cancellation', async () => {
-    const stringOrderId = '456';
+  it('[TC_EMAIL_010] should send email when order has no tickets', async () => {
+    // Tạo order mới không có tickets
+    const orderNoTickets = await Order.create({
+      user_id: testUserId,
+      tour_id: testTourId,
+      quantity: 1,
+      total_price: 3000000,
+      status: 'pending',
+      is_paid: false,
+      is_review: false,
+      payment_url: 'http://test.com',
+      start_date: new Date('2026-12-01'),
+      end_date: new Date('2026-12-05')
+    });
+    createdOrders.push(orderNoTickets.id);
 
-    try {
-      await emailService.sendCancellationEmail(stringOrderId as any);
-      console.log('⚠️ TC_EMAIL_017: Service accepts string orderId (auto-converts)');
-    } catch (error: any) {
-      console.log('✅ TC_EMAIL_017: Service rejects string orderId (strict type)');
-    }
+    // Send payment confirmation (không có tickets)
+    await emailService.sendPaymentConfirmationEmail(orderNoTickets.id);
+
+    // Send cancellation (không có tickets)
+    await emailService.sendCancellationEmail(orderNoTickets.id);
+
+    console.log('✅ TC_EMAIL_010: Emails sent without tickets');
   });
 
   /**
-   * [TC_EMAIL_018] Kiểm tra service có default export
-   * Mục tiêu: Verify service được export đúng cách
-   * Input: Không có
-   * Expected: emailService là default export
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
+   * [TC_EMAIL_011] Gửi email với tour destination null
    */
-  it('[TC_EMAIL_018] should be default exported', async () => {
-    expect(emailService).toBeDefined();
-    expect(typeof emailService).toBe('object');
-    expect(emailService).not.toBeNull();
+  it('[TC_EMAIL_011] should handle tour with null destination', async () => {
+    // Tạo tour không có destination
+    const tourNoDest = await Tour.create({
+      title: 'No Destination Tour ' + Date.now(),
+      departure: 'HCM',
+      start_date: new Date('2026-12-01'),
+      end_date: new Date('2026-12-05'),
+      price: 2000000,
+      capacity: 50,
+      latitude: 0,
+      longitude: 0,
+      is_active: true
+    });
+    createdTours.push(tourNoDest.id);
 
-    console.log('✅ TC_EMAIL_018: Service is default exported');
-  });
+    const order = await Order.create({
+      user_id: testUserId,
+      tour_id: tourNoDest.id,
+      quantity: 1,
+      total_price: 2000000,
+      status: 'confirmed',
+      is_paid: true,
+      is_review: false,
+      payment_url: 'http://test.com',
+      start_date: new Date('2026-12-01'),
+      end_date: new Date('2026-12-05')
+    });
+    createdOrders.push(order.id);
 
-  /**
-   * [TC_EMAIL_019] Kiểm tra methods không phải là async generators
-   * Mục tiêu: Verify methods là async functions bình thường
-   * Input: Không có
-   * Expected: Methods là functions, không phải generators
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_EMAIL_019] should have regular async methods', async () => {
-    const paymentMethod = emailService.sendPaymentConfirmationEmail;
-    const cancellationMethod = emailService.sendCancellationEmail;
+    // Send email (destination sẽ là 'Đang cập nhật')
+    await emailService.sendPaymentConfirmationEmail(order.id);
 
-    // Verify they are functions
-    expect(typeof paymentMethod).toBe('function');
-    expect(typeof cancellationMethod).toBe('function');
-
-    // Verify they return promises (async functions)
-    const paymentResult = paymentMethod(9999999).catch(() => {});
-    const cancellationResult = cancellationMethod(9999999).catch(() => {});
-    
-    expect(paymentResult).toBeInstanceOf(Promise);
-    expect(cancellationResult).toBeInstanceOf(Promise);
-
-    console.log('✅ TC_EMAIL_019: Methods are async functions');
-  });
-
-  /**
-   * [TC_EMAIL_020] Kiểm tra service không bị null/undefined
-   * Mục tiêu: Verify service luôn tồn tại
-   * Input: Không có
-   * Expected: emailService tồn tại và có thể sử dụng
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_EMAIL_020] should not be null or undefined', async () => {
-    expect(emailService).toBeTruthy();
-    expect(emailService).not.toBeNull();
-    expect(emailService).not.toBeUndefined();
-
-    console.log('✅ TC_EMAIL_020: Service is not null/undefined');
+    console.log('✅ TC_EMAIL_011: Handled null destination');
   });
 });
