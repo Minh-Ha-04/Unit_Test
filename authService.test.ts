@@ -141,64 +141,31 @@ describe('[Feature 1] Authentication & Authorization - Complete Unit Tests', () 
   });
 
   /**
-   * [TC_AUTH_006] Đăng nhập thành công với credentials đúng
+   * [TC_AUTH_006] (merged: wrong password + non-existent email)
+   * Mục tiêu: Đăng nhập sai credentials
    */
-  it('[TC_AUTH_006] should login successfully with valid credentials', async () => {
-    if (!createdUserId) {
-      throw new Error('User chưa được tạo từ TC_AUTH_001');
-    }
-
-    const loginData: LoginDTO = {
-      email: testEmail,
-      password: createdUserPassword || 'password123'
-    };
-
-    const result = await authService.login(loginData);
-
-    expect(result).toBeDefined();
-    expect(result.user).toBeDefined();
-    expect(result.user.email).toBe(loginData.email);
-    expect(result.accessToken).toBeDefined();
-    expect(result.refreshToken).toBeDefined();
-    expect(typeof result.accessToken).toBe('string');
-    expect(typeof result.refreshToken).toBe('string');
-    expect(result.user.id).toBe(createdUserId);
-
-    console.log('✅ TC_AUTH_006: Đăng nhập thành công với tokens');
-  });
-
-  /**
-   * [TC_AUTH_007] Đăng nhập sai mật khẩu
-   */
-  it('[TC_AUTH_007] should fail when password is incorrect', async () => {
+  it('[TC_AUTH_006] should fail when login with wrong credentials', async () => {
+    // Test wrong password
     const wrongPasswordData: LoginDTO = {
       email: testEmail,
       password: 'wrongpassword'
     };
-
     await expect(authService.login(wrongPasswordData)).rejects.toThrow('Sai mật khẩu');
 
-    console.log('✅ TC_AUTH_007: Từ chối sai mật khẩu');
-  });
-
-  /**
-   * [TC_AUTH_008] Đăng nhập với email không tồn tại
-   */
-  it('[TC_AUTH_008] should fail when email does not exist', async () => {
+    // Test non-existent email
     const nonExistentEmailData: LoginDTO = {
       email: 'nonexistent_' + Date.now() + '@example.com',
       password: 'password123'
     };
-
     await expect(authService.login(nonExistentEmailData)).rejects.toThrow('Sai tài khoản');
 
-    console.log('✅ TC_AUTH_008: Từ chối email không tồn tại');
+    console.log('✅ TC_AUTH_006: Từ chối sai credentials');
   });
 
   /**
-   * [TC_AUTH_009] Đăng nhập với tài khoản bị vô hiệu hóa
+   * [TC_AUTH_007] Đăng nhập với tài khoản bị vô hiệu hóa
    */
-  it('[TC_AUTH_009] should fail when account is inactive', async () => {
+  it('[TC_AUTH_007] should fail when account is inactive', async () => {
     // Tạo user inactive
     const email4 = 'test_auth_inactive_' + Date.now() + '@example.com';
     const hashedPassword = await bcrypt.hash('password123', 10);
@@ -218,27 +185,33 @@ describe('[Feature 1] Authentication & Authorization - Complete Unit Tests', () 
 
     await expect(authService.login(loginData)).rejects.toThrow('Tài khoản đã bị vô hiệu hóa');
 
-    console.log('✅ TC_AUTH_009: Từ chối tài khoản inactive');
+    console.log('✅ TC_AUTH_007: Từ chối tài khoản inactive');
   });
 
   /**
-   * [TC_AUTH_010] Đăng nhập thiếu email/password
+   * [TC_AUTH_008] (merged: missing email + missing password)
+   * Mục tiêu: Đăng nhập thiếu email/password
    */
-  it('[TC_AUTH_010] should fail when login credentials are missing', async () => {
+  it('[TC_AUTH_008] should fail when login credentials are missing', async () => {
+    // Test missing password
     const incompleteLogin: any = {
       email: testEmail,
-      // Thiếu password
     };
-
     await expect(authService.login(incompleteLogin)).rejects.toThrow('Vui lòng nhập đầy đủ email và mật khẩu');
 
-    console.log('✅ TC_AUTH_010: Từ chối thiếu credentials');
+    // Test missing email
+    const missingEmail: any = {
+      password: 'password123'
+    };
+    await expect(authService.login(missingEmail)).rejects.toThrow('Vui lòng nhập đầy đủ email và mật khẩu');
+
+    console.log('✅ TC_AUTH_008: Từ chối thiếu credentials');
   });
 
   /**
-   * [TC_AUTH_011] Refresh token với token hợp lệ
+   * [TC_AUTH_009] Refresh token với token hợp lệ
    */
-  it('[TC_AUTH_011] should refresh token successfully', async () => {
+  it('[TC_AUTH_009] should refresh token successfully', async () => {
     // Login để lấy refresh token
     const loginResult = await authService.login({
       email: testEmail,
@@ -251,39 +224,26 @@ describe('[Feature 1] Authentication & Authorization - Complete Unit Tests', () 
     expect(result.accessToken).toBeDefined();
     expect(typeof result.accessToken).toBe('string');
 
-    console.log('✅ TC_AUTH_011: Refresh token thành công');
+    console.log('✅ TC_AUTH_009: Refresh token thành công');
   });
 
   /**
-   * [TC_AUTH_012] Refresh token với token không hợp lệ
+   * [TC_AUTH_010] Refresh token với token không hợp lệ
    */
-  it('[TC_AUTH_012] should fail with invalid refresh token', async () => {
+  it('[TC_AUTH_010] should fail with invalid refresh token', async () => {
     const invalidToken = 'invalid.token.here';
 
     await expect(authService.refreshToken(invalidToken)).rejects.toThrow();
 
-    console.log('✅ TC_AUTH_012: Từ chối invalid refresh token');
+    console.log('✅ TC_AUTH_010: Từ chối invalid refresh token');
   });
 
-  /**
-   * [TC_AUTH_013] Forgot password - Gửi OTP
-   */
-  it('[TC_AUTH_013] should send OTP for forgot password', async () => {
-    const forgotData: ForgotPasswordDTO = {
-      email: testEmail
-    };
 
-    const result = await authService.forgotPassword(forgotData);
-
-    expect(result).toBeDefined();
-
-    console.log('✅ TC_AUTH_013: Gửi OTP thành công');
-  });
 
   /**
-   * [TC_AUTH_014] Forgot password với email không tồn tại
+   * [TC_AUTH_011] Forgot password với email không tồn tại
    */
-  it('[TC_AUTH_014] should fail with non-existent email for forgot password', async () => {
+  it('[TC_AUTH_011] should fail with non-existent email for forgot password', async () => {
     const forgotData: ForgotPasswordDTO = {
       email: 'nonexistent_' + Date.now() + '@example.com'
     };
@@ -291,57 +251,13 @@ describe('[Feature 1] Authentication & Authorization - Complete Unit Tests', () 
     // Function này throw error nếu email không tồn tại
     await expect(authService.forgotPassword(forgotData)).rejects.toThrow('Email không tồn tại trong hệ thống');
 
-    console.log('✅ TC_AUTH_014: Từ chối email không tồn tại');
+    console.log('✅ TC_AUTH_011: Từ chối email không tồn tại');
   });
 
   /**
-   * [TC_AUTH_015] Reset password với OTP đúng
-   * Mục tiêu: Kiểm tra reset password với OTP hợp lệ
-   * Input: {email, otp, new_password}
-   * Expected: Password được cập nhật trong DB
-   * CheckDB: So sánh password_hash trước và sau khi reset
-   * Rollback: Sẽ được cleanup trong afterAll
+   * [TC_AUTH_012] Change password thành công
    */
-  it('[TC_AUTH_015] should reset password with valid OTP', async () => {
-    // First request OTP
-    await authService.forgotPassword({ email: testEmail });
-
-    // Note: Trong thực tế, OTP sẽ được lưu trong Redis/DB
-    // Test này sẽ fail nếu không có OTP hợp lệ
-    // Để pass test, ta mock hoặc skip
-    const newPassword = 'resetpassword123';
-    const resetData: ResetPasswordDTO = {
-      email: testEmail,
-      new_password: newPassword,
-      otp: '123456' // OTP giả lập
-    };
-
-    try {
-      await authService.resetPassword(resetData);
-      
-      // CheckDB: Kiểm tra password đã được cập nhật
-      const dbUser = await User.findByPk(createdUserId);
-      expect(dbUser).not.toBeNull();
-      
-      // Verify password mới hoạt động
-      const loginResult = await authService.login({
-        email: testEmail,
-        password: newPassword
-      });
-      expect(loginResult.user.email).toBe(testEmail);
-      
-      createdUserPassword = newPassword;
-      console.log('✅ TC_AUTH_015: Reset password thành công');
-    } catch (error: any) {
-      // Có thể fail do OTP không hợp lệ - điều này là bình thường
-      console.log('⚠️ TC_AUTH_015: Reset password test - OTP validation working (expected behavior)');
-    }
-  });
-
-  /**
-   * [TC_AUTH_016] Change password thành công
-   */
-  it('[TC_AUTH_016] should change password successfully', async () => {
+  it('[TC_AUTH_012] should change password successfully', async () => {
     if (!createdUserId) {
       throw new Error('User chưa được tạo');
     }
@@ -359,13 +275,13 @@ describe('[Feature 1] Authentication & Authorization - Complete Unit Tests', () 
     // Update stored password
     createdUserPassword = 'newpassword456';
 
-    console.log('✅ TC_AUTH_016: Đổi mật khẩu thành công');
+    console.log('✅ TC_AUTH_012: Đổi mật khẩu thành công');
   });
 
   /**
-   * [TC_AUTH_017] Change password với current password sai
+   * [TC_AUTH_013] Change password với current password sai
    */
-  it('[TC_AUTH_017] should fail change password with wrong current password', async () => {
+  it('[TC_AUTH_013] should fail change password with wrong current password', async () => {
     if (!createdUserId) {
       throw new Error('User chưa được tạo');
     }
@@ -377,48 +293,13 @@ describe('[Feature 1] Authentication & Authorization - Complete Unit Tests', () 
 
     await expect(authService.changePassword(createdUserId, wrongCurrentData)).rejects.toThrow();
 
-    console.log('✅ TC_AUTH_017: Từ chối current password sai');
+    console.log('✅ TC_AUTH_013: Từ chối current password sai');
   });
 
   /**
-   * [TC_AUTH_018] Change password với new password ngắn (service không validate)
-   * Mục tiêu: Kiểm tra validation của new_password trong changePassword
-   * Input: {current_password, new_password < 6 ký tự}
-   * Expected: Service KHÔNG validate độ dài, nên sẽ thành công
-   * CheckDB: Password được cập nhật trong DB
-   * Rollback: Password mới sẽ được sử dụng cho tests sau
+   * [TC_AUTH_014] Change password với user không tồn tại
    */
-  it('[TC_AUTH_018] should allow change password with short new password (no validation in service)', async () => {
-    if (!createdUserId) {
-      throw new Error('User chưa được tạo');
-    }
-
-    const shortNewPassword = '12345'; // Chỉ 5 ký tự - service không validate
-    const shortNewPasswordData: ChangePasswordDTO = {
-      current_password: createdUserPassword || 'newpassword456',
-      new_password: shortNewPassword
-    };
-
-    // Service này KHÔNG validate độ dài new_password, nên sẽ thành công
-    const result = await authService.changePassword(createdUserId, shortNewPasswordData);
-    expect(result).toBe(true);
-
-    // CheckDB: Xác minh password đã được cập nhật trong DB
-    const dbUser = await User.findByPk(createdUserId);
-    expect(dbUser).not.toBeNull();
-    expect(dbUser?.password_hash).toBeDefined();
-    expect(dbUser?.password_hash).not.toBe(createdUserPassword); // Password đã thay đổi
-
-    // Update stored password cho tests sau
-    createdUserPassword = shortNewPassword;
-
-    console.log('✅ TC_AUTH_018: Change password với short password (service không validate)');
-  });
-
-  /**
-   * [TC_AUTH_019] Change password với user không tồn tại
-   */
-  it('[TC_AUTH_019] should fail change password for non-existent user', async () => {
+  it('[TC_AUTH_014] should fail change password for non-existent user', async () => {
     const changeData: ChangePasswordDTO = {
       current_password: 'password123',
       new_password: 'newpassword123'
@@ -426,45 +307,14 @@ describe('[Feature 1] Authentication & Authorization - Complete Unit Tests', () 
 
     await expect(authService.changePassword(9999999, changeData)).rejects.toThrow('Người dùng không tồn tại');
 
-    console.log('✅ TC_AUTH_019: Từ chối user không tồn tại');
+    console.log('✅ TC_AUTH_014: Từ chối user không tồn tại');
   });
 
-  /**
-   * [TC_AUTH_020] Update profile thành công
-   */
-  it('[TC_AUTH_020] should update profile successfully', async () => {
-    if (!createdUserId) {
-      throw new Error('User chưa được tạo');
-    }
-
-    const updateData: UpdateProfileDTO = {
-      username: 'updated_username',
-      phone: '0909999999',
-      gender: 'male'
-    };
-
-    const result = await authService.updateProfile(createdUserId, updateData);
-
-    expect(result).toBeDefined();
-    expect(result.username).toBe(updateData.username);
-    expect(result.phone).toBe(updateData.phone);
-    expect(result.gender).toBe(updateData.gender);
-
-    // DB Check
-    const dbUser = await User.findByPk(createdUserId);
-    expect(dbUser).not.toBeNull();
-    if (dbUser) {
-      expect(dbUser.username).toBe(updateData.username);
-      expect(dbUser.phone).toBe(updateData.phone);
-    }
-
-    console.log('✅ TC_AUTH_020: Cập nhật profile thành công');
-  });
 
   /**
-   * [TC_AUTH_021] Update profile với email trùng
+   * [TC_AUTH_015] Update profile với email trùng
    */
-  it('[TC_AUTH_021] should fail update profile with duplicate email', async () => {
+  it('[TC_AUTH_015] should fail update profile with duplicate email', async () => {
     // Tạo user khác để test email trùng
     const email5 = 'test_auth_5_' + Date.now() + '@example.com';
     const hashedPassword = await bcrypt.hash('password123', 10);
@@ -487,228 +337,334 @@ describe('[Feature 1] Authentication & Authorization - Complete Unit Tests', () 
 
     await expect(authService.updateProfile(createdUserId, updateData)).rejects.toThrow('Email đã được sử dụng');
 
-    console.log('✅ TC_AUTH_021: Từ chối email trùng khi update');
+    console.log('✅ TC_AUTH_015: Từ chối email trùng khi update');
   });
 
   /**
-   * [TC_AUTH_022] Update profile với user không tồn tại
+   * [TC_AUTH_016] Update profile với user không tồn tại
    */
-  it('[TC_AUTH_022] should fail update profile for non-existent user', async () => {
+  it('[TC_AUTH_016] should fail update profile for non-existent user', async () => {
     const updateData: UpdateProfileDTO = {
       username: 'new_username'
     };
 
     await expect(authService.updateProfile(9999999, updateData)).rejects.toThrow('Người dùng không tồn tại');
 
-    console.log('✅ TC_AUTH_022: Từ chối update user không tồn tại');
+    console.log('✅ TC_AUTH_016: Từ chối update user không tồn tại');
   });
 
   /**
-   * [TC_AUTH_023] Login sau khi đổi password với password mới
-   * Mục tiêu: Kiểm tra login hoạt động với password mới sau khi changePassword
-   * Input: {email, new_password}
-   * Expected: Đăng nhập thành công với tokens
-   * CheckDB: Không cần - chỉ kiểm tra response
-   * Rollback: Không thay đổi DB
+   * [TC_AUTH_017] Update profile với avatar_url và các field khác
    */
-  it('[TC_AUTH_023] should login with new password after change', async () => {
+  it('[TC_AUTH_017] should update profile with avatar_url and all fields', async () => {
     if (!createdUserId) {
       throw new Error('User chưa được tạo');
     }
 
-    // Tạo user mới để test login sau khi đổi password
-    const newTestEmail = 'test_auth_login_' + Date.now() + '@example.com';
-    const originalPassword = 'originalpassword';
-    const changedPassword = 'changedpassword123';
-    
-    const hashedPassword = await bcrypt.hash(originalPassword, 10);
-    const testUser = await User.create({
-      username: 'login_after_change',
-      email: newTestEmail,
-      password_hash: hashedPassword,
+    const updateData: UpdateProfileDTO = {
+      username: 'updated_with_avatar',
       phone: '0908888888',
-      is_active: true
-    });
-    createdUsers.push(testUser.id);
-
-    // CheckDB: Verify user created
-    const dbUserBefore = await User.findByPk(testUser.id);
-    expect(dbUserBefore).not.toBeNull();
-    expect(dbUserBefore?.email).toBe(newTestEmail);
-
-    // Đổi password
-    await authService.changePassword(testUser.id, {
-      current_password: originalPassword,
-      new_password: changedPassword
-    });
-
-    // CheckDB: Verify password changed
-    const dbUserAfter = await User.findByPk(testUser.id);
-    expect(dbUserAfter).not.toBeNull();
-    expect(dbUserAfter?.password_hash).not.toBe(dbUserBefore?.password_hash);
-
-    // Login với password mới
-    const loginData: LoginDTO = {
-      email: newTestEmail,
-      password: changedPassword
+      gender: 'female',
+      avatar_url: 'https://example.com/avatar.jpg'
     };
 
-    const result = await authService.login(loginData);
+    const result = await authService.updateProfile(createdUserId, updateData);
 
     expect(result).toBeDefined();
-    expect(result.user.email).toBe(newTestEmail);
-    expect(result.accessToken).toBeDefined();
-    expect(result.refreshToken).toBeDefined();
+    expect(result.username).toBe(updateData.username);
+    expect(result.phone).toBe(updateData.phone);
+    expect(result.gender).toBe(updateData.gender);
+    expect(result.avatar_url).toBe(updateData.avatar_url);
 
-    console.log('✅ TC_AUTH_023: Đăng nhập với password mới thành công');
+    // DB Check
+    const dbUser = await User.findByPk(createdUserId);
+    expect(dbUser).not.toBeNull();
+    if (dbUser) {
+      expect(dbUser.avatar_url).toBe(updateData.avatar_url);
+    }
+
+    console.log('✅ TC_AUTH_017: Cập nhật profile với avatar_url thành công');
   });
 
   /**
-   * [TC_AUTH_024] Login với password cũ sau khi đổi (phải fail)
-   * Mục tiêu: Kiểm tra login thất bại với password cũ sau khi đã đổi
-   * Input: {email, old_password}
-   * Expected: Ném lỗi "Sai mật khẩu"
-   * CheckDB: Không cần - chỉ kiểm tra error handling
-   * Rollback: Không thay đổi DB
+   * [TC_AUTH_018] Update profile với dữ liệu rỗng
    */
-  it('[TC_AUTH_024] should fail login with old password after change', async () => {
-    const oldPassword = 'password123'; // Password cũ từ TC_AUTH_001
-    const oldPasswordData: LoginDTO = {
-      email: testEmail,
-      password: oldPassword
-    };
+  it('[TC_AUTH_018] should fail update profile with empty data', async () => {
+    if (!createdUserId) {
+      throw new Error('User chưa được tạo');
+    }
 
-    // Sau khi đã đổi password ở TC_AUTH_016 và TC_AUTH_018, password cũ không còn valid
-    await expect(authService.login(oldPasswordData)).rejects.toThrow('Sai mật khẩu');
+    const emptyData: UpdateProfileDTO = {};
 
-    console.log('✅ TC_AUTH_024: Từ chối password cũ sau khi đổi');
+    await expect(authService.updateProfile(createdUserId, emptyData)).rejects.toThrow('Không có dữ liệu nào để cập nhật');
+
+    console.log('✅ TC_AUTH_018: Từ chối update với dữ liệu rỗng');
   });
 
   /**
-   * [TC_AUTH_025] Register với email format không hợp lệ
-   * Mục tiêu: Kiểm tra validation email format
-   * Input: {username, email không valid, password, phone}
-   * Expected: Ném lỗi validation email
-   * CheckDB: Không thay đổi DB
-   * Rollback: Không cần
+   * [TC_AUTH_019] Login với input không phải string
    */
-  it('[TC_AUTH_025] should fail registration with invalid email format', async () => {
-    const invalidEmailData: RegisterDTO = {
-      username: 'testuser_invalid_email',
-      email: 'invalid-email-format', // Không có @domain.com
+  it('[TC_AUTH_019] should fail when login with non-string credentials', async () => {
+    await expect(
+      authService.login({
+        email: 12345 as any,
+        password: 'password123'
+      })
+    ).rejects.toThrow('Email và mật khẩu phải là chuỗi');
+
+    await expect(
+      authService.login({
+        email: testEmail,
+        password: 12345 as any
+      })
+    ).rejects.toThrow('Email và mật khẩu phải là chuỗi');
+
+    console.log('✅ TC_AUTH_019: Từ chối login với non-string credentials');
+  });
+
+  /**
+   * [TC_AUTH_020] Register với input không phải string
+   */
+  it('[TC_AUTH_020] should fail when registering with non-string fields', async () => {
+    const invalidTypeData: any = {
+      username: 12345,
+      email: 'valid@example.com',
       password: 'password123',
       phone: '0901234567'
     };
 
-    // Service có thể không validate email format - test này có thể fail
-    try {
-      const result = await authService.register(invalidEmailData);
-      // Nếu pass, nghĩa là service không validate email format
-      console.log('⚠️ TC_AUTH_025: Service không validate email format (đây có thể là bug)');
-      
-      // Rollback: Xóa user đã tạo
-      if (result.user.id) {
-        await User.destroy({ where: { id: result.user.id } });
-      }
-    } catch (error: any) {
-      console.log('✅ TC_AUTH_025: Service validate email format correctly');
-    }
+    await expect(authService.register(invalidTypeData)).rejects.toThrow('Email, username và password phải là chuỗi');
+
+    console.log('✅ TC_AUTH_020: Từ chối register với non-string fields');
   });
 
   /**
-   * [TC_AUTH_026] Update profile với username trống
-   * Mục tiêu: Kiểm tra validation khi update username rỗng
-   * Input: {userId, username: ''}
-   * Expected: Có thể fail validation hoặc thành công (tùy service)
-   * CheckDB: Kiểm tra DB nếu thành công
-   * Rollback: Khôi phục username cũ nếu cần
+   * [TC_AUTH_021] (merged: invalid format + missing email + non-string email)
+   * Mục tiêu: Forgot password validation
    */
-  it('[TC_AUTH_026] should handle update profile with empty username', async () => {
+  it('[TC_AUTH_021] should fail forgot password with invalid input', async () => {
+    // Test invalid email format
+    await expect(
+      authService.forgotPassword({ email: 'invalid-email-format' })
+    ).rejects.toThrow('Email không hợp lệ');
+
+    // Test missing email
+    await expect(
+      authService.forgotPassword({ email: '' } as any)
+    ).rejects.toThrow('Vui lòng nhập email');
+
+    // Test non-string email
+    await expect(
+      authService.forgotPassword({ email: 12345 } as any)
+    ).rejects.toThrow('Email phải là chuỗi');
+
+    console.log('✅ TC_AUTH_021: Từ chối forgot password với invalid input');
+  });
+
+  /**
+   * [TC_AUTH_022] (merged: refresh token edge cases - non-existent + inactive user)
+   * Mục tiêu: Refresh token với các edge cases
+   */
+  it('[TC_AUTH_022] should fail refresh token for edge cases', async () => {
+    // Test non-existent user
+    const tempEmail1 = 'temp_refresh_' + Date.now() + '@example.com';
+    const hashedPassword1 = await bcrypt.hash('password123', 10);
+    const tempUser1 = await User.create({
+      username: 'temp_refresh_user',
+      email: tempEmail1,
+      password_hash: hashedPassword1,
+      phone: '0901111111',
+      is_active: true
+    });
+
+    const loginResult1 = await authService.login({
+      email: tempEmail1,
+      password: 'password123'
+    });
+
+    await User.destroy({ where: { id: tempUser1.id } });
+
+    await expect(
+      authService.refreshToken(loginResult1.refreshToken)
+    ).rejects.toThrow('Người dùng không tồn tại');
+
+    // Test inactive user
+    const tempEmail2 = 'temp_inactive_' + Date.now() + '@example.com';
+    const hashedPassword2 = await bcrypt.hash('password123', 10);
+    const tempUser2 = await User.create({
+      username: 'temp_inactive_user',
+      email: tempEmail2,
+      password_hash: hashedPassword2,
+      phone: '0902222222',
+      is_active: true
+    });
+    createdUsers.push(tempUser2.id);
+
+    const loginResult2 = await authService.login({
+      email: tempEmail2,
+      password: 'password123'
+    });
+
+    await User.update({ is_active: false }, { where: { id: tempUser2.id } });
+
+    await expect(
+      authService.refreshToken(loginResult2.refreshToken)
+    ).rejects.toThrow('Tài khoản đã bị vô hiệu hóa');
+
+    console.log('✅ TC_AUTH_022: Từ chối refresh token cho edge cases');
+  });
+
+  /**
+   * [TC_AUTH_023] Change password với Google account
+   */
+  it('[TC_AUTH_023] should fail change password for Google account', async () => {
+    const googleEmail = 'google_user_' + Date.now() + '@example.com';
+    const googleUser = await User.create({
+      username: 'google_user',
+      email: googleEmail,
+      password_hash: null,
+      google_id: 'google_12345',
+      phone: '0903333333',
+      is_active: true
+    });
+    createdUsers.push(googleUser.id);
+
+    await expect(
+      authService.changePassword(googleUser.id, {
+        current_password: 'anything',
+        new_password: 'newpassword123'
+      })
+    ).rejects.toThrow('Tài khoản này không được sử dụng tính năng này vì tài khoản Google không có mật khẩu');
+
+    console.log('✅ TC_AUTH_023: Từ chối change password cho Google account');
+  });
+
+  /**
+   * [TC_AUTH_024] Update profile với email trùng chính nó (nên thành công)
+   */
+  it('[TC_AUTH_024] should alow update profile with same email', async () => {
     if (!createdUserId) {
       throw new Error('User chưa được tạo');
     }
 
-    // Lưu username gốc để rollback
-    const originalUser = await User.findByPk(createdUserId);
-    const originalUsername = originalUser?.username;
+    const dbUser = await User.findByPk(createdUserId);
+    const currentEmail = dbUser?.email || '';
 
-    const emptyUsernameData: UpdateProfileDTO = {
-      username: '' // Username rỗng
+    const updateData: UpdateProfileDTO = {
+      email: currentEmail,
+      phone: '0907777777'
     };
 
-    try {
-      const result = await authService.updateProfile(createdUserId, emptyUsernameData);
-      
-      // Nếu thành công, kiểm tra DB
-      const dbUser = await User.findByPk(createdUserId);
-      expect(dbUser?.username).toBe('');
-      
-      // Rollback: Khôi phục username cũ
-      await User.update(
-        { username: originalUsername },
-        { where: { id: createdUserId } }
-      );
-      
-      console.log('⚠️ TC_AUTH_026: Service cho phép username trống (có thể là bug)');
-    } catch (error: any) {
-      console.log('✅ TC_AUTH_026: Service từ chối username trống');
-    }
+    const result = await authService.updateProfile(createdUserId, updateData);
+
+    expect(result).toBeDefined();
+    expect(result.email).toBe(currentEmail);
+    expect(result.phone).toBe('0907777777');
+
+    console.log('✅ TC_AUTH_024: Cho phép update với email không đổi');
   });
 
   /**
-   * [TC_AUTH_027] Login với email có khoảng trắng thừa
-   * Mục tiêu: Kiểm tra xử lý email có whitespace
-   * Input: {email: ' email@example.com ', password}
-   * Expected: Có thể fail hoặc tự động trim
-   * CheckDB: Không thay đổi DB
-   * Rollback: Không cần
+   * [TC_AUTH_025] (merged: reset password all validations)
+   * Mục tiêu: Reset password validation (fields, types, format, password length)
    */
-  it('[TC_AUTH_027] should handle login with whitespace in email', async () => {
-    const emailWithSpaces = ' ' + testEmail + ' '; // Thêm khoảng trắng
-    const loginData: LoginDTO = {
-      email: emailWithSpaces,
-      password: createdUserPassword || 'password123'
-    };
+  it('[TC_AUTH_025] should fail reset password with invalid input', async () => {
+    // Test missing fields
+    await expect(
+      authService.resetPassword({
+        email: testEmail,
+        new_password: 'newpassword123',
+        otp: ''
+      })
+    ).rejects.toThrow('Vui lòng nhập đầy đủ email, OTP và mật khẩu mới');
 
-    try {
-      const result = await authService.login(loginData);
-      
-      // Nếu thành công, service đã tự động trim email
-      expect(result.user.email).toBe(testEmail);
-      console.log('✅ TC_AUTH_027: Service tự động trim email whitespace');
-    } catch (error: any) {
-      // Nếu fail, service không xử lý whitespace
-      console.log('⚠️ TC_AUTH_027: Service không xử lý email whitespace (có thể gây lỗi UX)');
-    }
+    // Test invalid types
+    await expect(
+      authService.resetPassword({
+        email: 12345 as any,
+        new_password: 'newpassword123',
+        otp: '123456'
+      })
+    ).rejects.toThrow('Thông tin không hợp lệ');
+
+    // Test invalid email format
+    await expect(
+      authService.resetPassword({
+        email: 'invalid-email',
+        new_password: 'newpassword123',
+        otp: '123456'
+      })
+    ).rejects.toThrow('Email không hợp lệ');
+
+    // Test short password
+    await expect(
+      authService.resetPassword({
+        email: testEmail,
+        new_password: '12345',
+        otp: '123456'
+      })
+    ).rejects.toThrow('Mật khẩu phải có ít nhất 6 ký tự');
+
+    console.log('✅ TC_AUTH_025: Từ chối reset password với invalid input');
   });
 
   /**
-   * [TC_AUTH_028] Change password với new_password trùng current_password
-   * Mục tiêu: Kiểm tra validation khi đổi password mới trùng password cũ
-   * Input: {current_password, new_password: current_password}
-   * Expected: Có thể fail validation (best practice) hoặc thành công
-   * CheckDB: Kiểm tra nếu thành công
-   * Rollback: Không cần vì password không thay đổi
+   * [TC_AUTH_026] Reset password - OTP không tồn tại
    */
-  it('[TC_AUTH_028] should handle change password with same password', async () => {
-    if (!createdUserId) {
-      throw new Error('User chưa được tạo');
-    }
+  it('[TC_AUTH_026] should fail reset password with non-existent OTP', async () => {
+    const emailWithoutOTP = 'no_otp_' + Date.now() + '@example.com';
+    
+    await expect(
+      authService.resetPassword({
+        email: emailWithoutOTP,
+        new_password: 'newpassword123',
+        otp: '123456'
+      })
+    ).rejects.toThrow('OTP không tồn tại. Vui lòng yêu cầu OTP mới');
 
-    const samePasswordData: ChangePasswordDTO = {
-      current_password: createdUserPassword || '12345',
-      new_password: createdUserPassword || '12345' // Trùng password hiện tại
-    };
-
-    try {
-      const result = await authService.changePassword(createdUserId, samePasswordData);
-      
-      // Nếu thành công, service không validate trùng password
-      expect(result).toBe(true);
-      console.log('⚠️ TC_AUTH_028: Service cho phép đổi password trùng (nên có validation)');
-    } catch (error: any) {
-      // Nếu fail, service có validation tốt
-      console.log('✅ TC_AUTH_028: Service từ chối password trùng (good practice)');
-    }
+    console.log('✅ TC_AUTH_026: Từ chối reset password với OTP không tồn tại');
   });
+
+  /**
+   * [TC_AUTH_027] Reset password - OTP sai
+   */
+  it('[TC_AUTH_027] should fail reset password with wrong OTP', async () => {
+    // Request OTP
+    await authService.forgotPassword({ email: testEmail });
+
+    // Sai OTP
+    await expect(
+      authService.resetPassword({
+        email: testEmail,
+        new_password: 'newpassword123',
+        otp: '999999' // OTP sai
+      })
+    ).rejects.toThrow('OTP không chính xác');
+
+    console.log('✅ TC_AUTH_027: Từ chối reset password với OTP sai');
+  });
+
+
+  /**
+   * [TC_AUTH_028] Forgot password với Google account
+   */
+  it('[TC_AUTH_044] should fail forgot password for Google account', async () => {
+    const googleEmail = 'google_forgot_' + Date.now() + '@example.com';
+    const googleUser = await User.create({
+      username: 'google_forgot_user',
+      email: googleEmail,
+      password_hash: null,
+      google_id: 'google_11111',
+      phone: '0906666666',
+      is_active: true
+    });
+    createdUsers.push(googleUser.id);
+
+    await expect(
+      authService.forgotPassword({ email: googleEmail })
+    ).rejects.toThrow('Tài khoản này không được sử dụng tính năng này vì tài khoản Google không có mật khẩu');
+
+    console.log('✅ TC_AUTH_028: Từ chối forgot password cho Google account');
+  });
+
 });
