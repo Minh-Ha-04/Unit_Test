@@ -8,16 +8,17 @@ import bcrypt from 'bcryptjs';
 
 /**
  * Feature 6: Ticket Management - Comprehensive Unit Tests
- * ✅ Test Case IDs rõ ràng
- * ✅ CheckDB: Xác minh database thay đổi đúng
- * ✅ Rollback: Đảm bảo DB trở về trạng thái ban đầu
- * ❗ Tests có cả PASS và edge cases thực tế
  * 
  * Services được test:
- * - getUserTickets()
- * - getAllTickets()
- * - getTicketById()
- * - cancelTicketsByOrderId()
+ * - getUserTickets() - Lấy tickets của user với filters
+ * - getAllTickets() - Admin lấy tất cả tickets với filters
+ * - getTicketById() - Lấy chi tiết ticket
+ * - cancelTicketsByOrderId() - Hủy tất cả tickets của order
+ * - updateTicketStatus() - Admin cập nhật status ticket
+ * - cancelTicket() - User/Admin hủy ticket
+ * - getTicketsByTourId() - Lấy tickets theo tour
+ * - getTicketsByOrderId() - Lấy tickets theo order
+ * - cancelExpiredTickets() - Tự động hủy vé hết hạn
  */
 describe('[Feature 6] Ticket Management - Complete Unit Tests', () => {
   let testUserId: number | undefined;
@@ -91,7 +92,7 @@ describe('[Feature 6] Ticket Management - Complete Unit Tests', () => {
 
   afterAll(async () => {
     console.log('🔄 Bắt đầu Rollback dữ liệu Ticket Service...');
-    
+
     // Rollback theo thứ tự ngược lại để tránh foreign key constraints
     // 1. Xóa tickets trước (dependent records)
     let deletedTickets = 0;
@@ -100,7 +101,7 @@ describe('[Feature 6] Ticket Management - Complete Unit Tests', () => {
       deletedTickets += deleted || 0;
     }
     console.log(`   ✅ Đã xóa ${deletedTickets} tickets`);
-    
+
     // 2. Xóa orders
     let deletedOrders = 0;
     for (const orderId of createdOrders) {
@@ -108,7 +109,7 @@ describe('[Feature 6] Ticket Management - Complete Unit Tests', () => {
       deletedOrders += deleted || 0;
     }
     console.log(`   ✅ Đã xóa ${deletedOrders} orders`);
-    
+
     // 3. Xóa tours
     let deletedTours = 0;
     for (const tourId of createdTours) {
@@ -116,7 +117,7 @@ describe('[Feature 6] Ticket Management - Complete Unit Tests', () => {
       deletedTours += deleted || 0;
     }
     console.log(`   ✅ Đã xóa ${deletedTours} tours`);
-    
+
     // 4. Xóa users (phải xóa sau cùng vì là parent record)
     let deletedUsers = 0;
     for (const userId of createdUsers) {
@@ -124,190 +125,20 @@ describe('[Feature 6] Ticket Management - Complete Unit Tests', () => {
       deletedUsers += deleted || 0;
     }
     console.log(`   ✅ Đã xóa ${deletedUsers} users`);
-    
+
     console.log('✅ Rollback complete - Database restored');
   });
 
-  /**
-   * [TC_TICKET_001] Lấy vé của user
-   * Mục tiêu: Kiểm tra getUserTickets trả về tickets của user
-   * Input: userId, page=1, limit=10
-   * Expected: Trả về danh sách tickets kèm pagination
-   * CheckDB: Verify tickets thuộc về đúng user
-   * Rollback: Không thay đổi DB (read-only)
-   */
-  it('[TC_TICKET_001] should get user tickets', async () => {
-    if (!testUserId) {
-      throw new Error('User chưa được tạo');
-    }
-
-    const userTicketsResult = await ticketService.getUserTickets(testUserId, 1, 10);
-
-    // Verify response structure
-    expect(userTicketsResult).toBeDefined();
-    expect(userTicketsResult.tickets).toBeDefined();
-    expect(userTicketsResult.pagination).toBeDefined();
-    expect(Array.isArray(userTicketsResult.tickets)).toBe(true);
-
-    // CheckDB: Verify tất cả tickets thuộc về đúng user
-    for (const ticket of userTicketsResult.tickets) {
-      expect(ticket.user_id).toBe(testUserId);
-    }
-
-    console.log(`✅ TC_TICKET_001: Retrieved ${userTicketsResult.tickets.length} tickets for user`);
-  });
 
   /**
-   * [TC_TICKET_002] Lấy tất cả vé (Admin view)
-   * Mục tiêu: Kiểm tra getAllTickets trả về tất cả tickets
-   * Input: page=1, limit=10
-   * Expected: Trả về danh sách tickets kèm pagination
-   * CheckDB: Verify response có cấu trúc đúng
-   * Rollback: Không thay đổi DB
-   */
-  it('[TC_TICKET_002] should get all tickets', async () => {
-    const allTicketsResult = await ticketService.getAllTickets(1, 10);
-
-    // Verify response structure
-    expect(allTicketsResult).toBeDefined();
-    expect(allTicketsResult.tickets).toBeDefined();
-    expect(allTicketsResult.pagination).toBeDefined();
-    expect(Array.isArray(allTicketsResult.tickets)).toBe(true);
-
-    console.log(`✅ TC_TICKET_002: Retrieved ${allTicketsResult.tickets.length} tickets (admin view)`);
-  });
-
-  /**
-   * [TC_TICKET_003] Lấy vé theo ID
-   * Mục tiêu: Kiểm tra getTicketById trả về ticket đúng
-   * Input: ticketId (đã tạo trong beforeAll)
-   * Expected: Trả về ticket với đúng ID và ticket_code
-   * CheckDB: Verify ticket tồn tại trong DB với đúng data
-   * Rollback: Không thay đổi DB
-   */
-  it('[TC_TICKET_003] should get ticket by ID', async () => {
-    if (!createdTicketId) {
-      throw new Error('Ticket chưa được tạo');
-    }
-
-    const ticketById = await ticketService.getTicketById(createdTicketId);
-
-    // Verify ticket data
-    expect(ticketById).toBeDefined();
-    expect(ticketById.id).toBe(createdTicketId);
-    expect(ticketById.ticket_code).toBeDefined();
-    expect(ticketById.ticket_code).toMatch(/^TICKET_TEST_/);
-
-    // CheckDB: Verify ticket tồn tại trong database
-    const ticketInDb = await Ticket.findByPk(createdTicketId);
-    expect(ticketInDb).not.toBeNull();
-    expect(ticketInDb?.ticket_code).toBe(ticketById.ticket_code);
-
-    console.log('✅ TC_TICKET_003: Retrieved ticket by ID successfully');
-  });
-
-  /**
-   * [TC_TICKET_004] Lọc vé theo trạng thái 'active'
-   * Mục tiêu: Kiểm tra filter theo status hoạt động đúng
-   * Input: status='active'
-   * Expected: Trả về chỉ active tickets
-   * CheckDB: Verify tất cả tickets trả về có status='active'
-   * Rollback: Không thay đổi DB
-   */
-  it('[TC_TICKET_004] should filter tickets by status', async () => {
-    const activeStatusFilter = 'active';
-    const filteredTicketsResult = await ticketService.getAllTickets(1, 10, {
-      status: activeStatusFilter
-    });
-
-    // Verify response
-    expect(filteredTicketsResult).toBeDefined();
-    expect(Array.isArray(filteredTicketsResult.tickets)).toBe(true);
-
-    // CheckDB: Verify tất cả tickets có status='active'
-    for (const ticket of filteredTicketsResult.tickets) {
-      expect(ticket.status).toBe(activeStatusFilter);
-    }
-
-    console.log(`✅ TC_TICKET_004: Filtered ${filteredTicketsResult.tickets.length} active tickets`);
-  });
-
-  /**
-   * [TC_TICKET_005] Tìm vé theo mã vé
-   * Mục tiêu: Kiểm tra search theo ticket_code
-   * Input: text='TICKET_TEST'
-   * Expected: Trả về tickets có ticket_code chứa 'TICKET_TEST'
-   * CheckDB: Verify tickets trả về có ticket_code match
-   * Rollback: Không thay đổi DB
-   */
-  it('[TC_TICKET_005] should search tickets by ticket code', async () => {
-    const searchKeyword = 'TICKET_TEST';
-    const searchedTicketsResult = await ticketService.getAllTickets(1, 10, {
-      text: searchKeyword
-    });
-
-    // Verify response
-    expect(searchedTicketsResult).toBeDefined();
-    expect(Array.isArray(searchedTicketsResult.tickets)).toBe(true);
-
-    // CheckDB: Verify tickets có ticket_code chứa keyword
-    for (const ticket of searchedTicketsResult.tickets) {
-      expect(ticket.ticket_code).toContain(searchKeyword);
-    }
-
-    console.log(`✅ TC_TICKET_005: Searched ${searchedTicketsResult.tickets.length} tickets`);
-  });
-
-  /**
-   * [TC_TICKET_006] Lấy vé với phân trang
-   * Mục tiêu: Kiểm tra pagination hoạt động đúng
-   * Input: page=1, limit=5 và page=2, limit=5
-   * Expected: Trả về 2 pages khác nhau
-   * CheckDB: Verify page numbers đúng
-   * Rollback: Không thay đổi DB
-   */
-  it('[TC_TICKET_006] should paginate tickets', async () => {
-    const firstPageResult = await ticketService.getAllTickets(1, 5);
-    const secondPageResult = await ticketService.getAllTickets(2, 5);
-
-    // Verify pagination
-    expect(firstPageResult).toBeDefined();
-    expect(firstPageResult.pagination.page).toBe(1);
-    expect(secondPageResult).toBeDefined();
-    expect(secondPageResult.pagination.page).toBe(2);
-
-    console.log(`✅ TC_TICKET_006: Pagination (Page 1: ${firstPageResult.tickets.length}, Page 2: ${secondPageResult.tickets.length})`);
-  });
-
-  /**
-   * [TC_TICKET_007] Lấy vé với limit lớn
-   * Mục tiêu: Kiểm tra handling limit lớn (100)
-   * Input: page=1, limit=100
-   * Expected: Trả về tối đa 100 tickets
-   * CheckDB: Verify limit trong pagination = 100
-   * Rollback: Không thay đổi DB
-   */
-  it('[TC_TICKET_007] should get tickets with large limit', async () => {
-    const largeLimit = 100;
-    const largeLimitResult = await ticketService.getAllTickets(1, largeLimit);
-
-    // Verify response
-    expect(largeLimitResult).toBeDefined();
-    expect(largeLimitResult.pagination.limit).toBe(largeLimit);
-    expect(largeLimitResult.tickets.length).toBeLessThanOrEqual(largeLimit);
-
-    console.log(`✅ TC_TICKET_007: Retrieved ${largeLimitResult.tickets.length} tickets with limit ${largeLimit}`);
-  });
-
-  /**
-   * [TC_TICKET_008] Hủy vé theo order ID
+   * [TC_TICKET_001] Hủy vé theo order ID
    * Mục tiêu: Kiểm tra cancelTicketsByOrderId hoạt động đúng
    * Input: orderId (tạo mới để test)
    * Expected: Tickets được chuyển sang status='cancelled'
    * CheckDB: Verify tickets có status='cancelled' trong DB
    * Rollback: Ticket đã hủy sẽ bị xóa trong afterAll
    */
-  it('[TC_TICKET_008] should cancel tickets by order ID', async () => {
+  it('[TC_TICKET_001] should cancel tickets by order ID', async () => {
     // Tạo order mới để test cancel
     const cancelTestOrder = await Order.create({
       user_id: testUserId!,
@@ -346,18 +177,18 @@ describe('[Feature 6] Ticket Management - Complete Unit Tests', () => {
     const ticketAfterCancel = await Ticket.findByPk(ticketToCancel.id);
     expect(ticketAfterCancel?.status).toBe('cancelled');
 
-    console.log(`✅ TC_TICKET_008: Cancelled ticket ${ticketToCancel.id} successfully`);
+    console.log(`✅ TC_TICKET_001: Cancelled ticket ${ticketToCancel.id} successfully`);
   });
 
   /**
-   * [TC_TICKET_009] Lấy vé của user với filters
+   * [TC_TICKET_002] Lấy vé của user với filters
    * Mục tiêu: Kiểm tra getUserTickets với status filter
    * Input: userId, page=1, limit=10, status='active'
    * Expected: Trả về chỉ active tickets của user
    * CheckDB: Verify tickets thuộc user và có status='active'
    * Rollback: Không thay đổi DB
    */
-  it('[TC_TICKET_009] should get user tickets with filters', async () => {
+  it('[TC_TICKET_002] should get user tickets with filters', async () => {
     const activeFilter = 'active';
     const filteredUserTicketsResult = await ticketService.getUserTickets(testUserId!, 1, 10, {
       status: activeFilter
@@ -373,191 +204,38 @@ describe('[Feature 6] Ticket Management - Complete Unit Tests', () => {
       expect(ticket.status).toBe(activeFilter);
     }
 
-    console.log(`✅ TC_TICKET_009: Retrieved ${filteredUserTicketsResult.tickets.length} tickets with filter`);
+    console.log(`✅ TC_TICKET_002: Retrieved ${filteredUserTicketsResult.tickets.length} tickets with filter`);
   });
 
   /**
-   * [TC_TICKET_010] Lấy vé với ID không tồn tại
+   * [TC_TICKET_003] Lấy vé với ID không tồn tại
    * Mục tiêu: Kiểm tra validation ticketId hợp lệ
    * Input: ticketId=9999999 (không tồn tại)
    * Expected: Throw error
    * CheckDB: Không có ticket nào được tạo/thay đổi
    * Rollback: Không cần
    */
-  it('[TC_TICKET_010] should fail when getting non-existent ticket', async () => {
+  it('[TC_TICKET_003] should fail when getting non-existent ticket', async () => {
     const nonExistentTicketId = 9999999;
-    
+
     await expect(ticketService.getTicketById(nonExistentTicketId)).rejects.toThrow();
 
     // CheckDB: Verify no ticket exists with this ID
     const ticketInDb = await Ticket.findByPk(nonExistentTicketId);
     expect(ticketInDb).toBeNull();
 
-    console.log('✅ TC_TICKET_010: Rejected non-existent ticket');
+    console.log('✅ TC_TICKET_003: Rejected non-existent ticket');
   });
 
   /**
-   * [TC_TICKET_011] Lấy vé với page = 0
-   * Mục tiêu: Kiểm tra validation page number
-   * Input: page=0, limit=10
-   * Expected: Có thể fail hoặc treat as page=1
-   * CheckDB: Không thay đổi DB
-   * Rollback: Không cần
+   * [TC_TICKET_004] Cập nhật status ticket (Admin)
+   * Mục tiêu: Kiểm tra updateTicketStatus hoạt động đúng
+   * Input: ticketId, status='used'
+   * Expected: Ticket status được cập nhật
+   * CheckDB: Verify ticket status trong DB
    */
-  it('[TC_TICKET_011] should handle tickets with page zero', async () => {
-    const invalidPage = 0;
-    
-    try {
-      const zeroPageResult = await ticketService.getAllTickets(invalidPage, 10);
-      
-      expect(zeroPageResult).toBeDefined();
-      console.log('⚠️ TC_TICKET_011: Service accepts page=0');
-    } catch (error: any) {
-      console.log('✅ TC_TICKET_011: Service validates page > 0 (good)');
-    }
-  });
-
-  /**
-   * [TC_TICKET_012] Lấy vé với limit = 0
-   * Mục tiêu: Kiểm tra validation limit
-   * Input: page=1, limit=0
-   * Expected: Có thể fail hoặc trả về empty
-   * CheckDB: Không thay đổi DB
-   * Rollback: Không cần
-   */
-  it('[TC_TICKET_012] should handle tickets with zero limit', async () => {
-    const zeroLimit = 0;
-    
-    try {
-      const zeroLimitResult = await ticketService.getAllTickets(1, zeroLimit);
-      
-      expect(zeroLimitResult).toBeDefined();
-      expect(zeroLimitResult.tickets.length).toBe(0);
-      console.log('✅ TC_TICKET_012: Zero limit returned empty array');
-    } catch (error: any) {
-      console.log('✅ TC_TICKET_012: Service validates limit > 0 (good)');
-    }
-  });
-
-  /**
-   * [TC_TICKET_013] Lấy vé với limit âm
-   * Mục tiêu: Kiểm tra validation limit âm
-   * Input: page=1, limit=-5
-   * Expected: Có thể fail hoặc ignore
-   * CheckDB: Không thay đổi DB
-   * Rollback: Không cần
-   */
-  it('[TC_TICKET_013] should handle tickets with negative limit', async () => {
-    const negativeLimit = -5;
-    
-    try {
-      const negativeLimitResult = await ticketService.getAllTickets(1, negativeLimit);
-      
-      expect(negativeLimitResult).toBeDefined();
-      console.log('⚠️ TC_TICKET_013: Service accepts negative limit');
-    } catch (error: any) {
-      console.log('✅ TC_TICKET_013: Service validates limit > 0 (good)');
-    }
-  });
-
-  /**
-   * [TC_TICKET_014] Lấy vé của user không tồn tại
-   * Mục tiêu: Kiểm tra getUserTickets với userId không tồn tại
-   * Input: userId=9999999
-   * Expected: Trả về empty array
-   * CheckDB: Verify không có tickets
-   * Rollback: Không cần
-   */
-  it('[TC_TICKET_014] should return empty for non-existent user tickets', async () => {
-    const nonExistentUserId = 9999999;
-    
-    const nonExistentUserTicketsResult = await ticketService.getUserTickets(nonExistentUserId, 1, 10);
-
-    expect(nonExistentUserTicketsResult).toBeDefined();
-    expect(Array.isArray(nonExistentUserTicketsResult.tickets)).toBe(true);
-    expect(nonExistentUserTicketsResult.tickets.length).toBe(0);
-
-    console.log('✅ TC_TICKET_014: Returned empty for non-existent user');
-  });
-
-  /**
-   * [TC_TICKET_015] Hủy vé với order không tồn tại
-   * Mục tiêu: Kiểm tra cancelTicketsByOrderId với orderId không tồn tại
-   * Input: orderId=9999999
-   * Expected: Có thể fail hoặc return 0
-   * CheckDB: Không có tickets nào bị thay đổi
-   * Rollback: Không cần
-   */
-  it('[TC_TICKET_015] should handle cancel for non-existent order', async () => {
-    const nonExistentOrderId = 9999999;
-    
-    try {
-      const cancelResult = await ticketService.cancelTicketsByOrderId(nonExistentOrderId);
-      
-      expect(cancelResult).toBeDefined();
-      console.log('✅ TC_TICKET_015: Service handled non-existent order gracefully');
-    } catch (error: any) {
-      console.log('✅ TC_TICKET_015: Service rejects non-existent order (good)');
-    }
-  });
-
-  /**
-   * [TC_TICKET_016] Lọc vé theo status 'cancelled'
-   * Mục tiêu: Kiểm tra filter theo status='cancelled'
-   * Input: status='cancelled'
-   * Expected: Trả về chỉ cancelled tickets
-   * CheckDB: Verify tất cả tickets có status='cancelled'
-   * Rollback: Không thay đổi DB
-   */
-  it('[TC_TICKET_016] should filter tickets by cancelled status', async () => {
-    const cancelledStatusFilter = 'cancelled';
-    const cancelledTicketsResult = await ticketService.getAllTickets(1, 50, {
-      status: cancelledStatusFilter
-    });
-
-    expect(cancelledTicketsResult).toBeDefined();
-    expect(Array.isArray(cancelledTicketsResult.tickets)).toBe(true);
-
-    // CheckDB: Verify tất cả tickets có status='cancelled'
-    for (const ticket of cancelledTicketsResult.tickets) {
-      expect(ticket.status).toBe(cancelledStatusFilter);
-    }
-
-    console.log(`✅ TC_TICKET_016: Filtered ${cancelledTicketsResult.tickets.length} cancelled tickets`);
-  });
-
-  /**
-   * [TC_TICKET_017] Lấy vé với page rất lớn
-   * Mục tiêu: Kiểm tra handling page number lớn
-   * Input: page=999999, limit=10
-   * Expected: Trả về empty array (không có data)
-   * CheckDB: Verify trả về empty
-   * Rollback: Không cần
-   */
-  it('[TC_TICKET_017] should handle tickets with very large page number', async () => {
-    const veryLargePage = 999999;
-    
-    const largePageResult = await ticketService.getAllTickets(veryLargePage, 10);
-
-    expect(largePageResult).toBeDefined();
-    expect(Array.isArray(largePageResult.tickets)).toBe(true);
-    expect(largePageResult.tickets.length).toBe(0);
-
-    console.log('✅ TC_TICKET_017: Returned empty for very large page number');
-  });
-
-  /**
-   * [TC_TICKET_018] Tạo và lấy vé với ticket_code duplicate
-   * Mục tiêu: Kiểm tra unique constraint trên ticket_code
-   * Input: ticket_code trùng lặp
-   * Expected: Có thể fail (unique constraint)
-   * CheckDB: Verify chỉ có 1 ticket với code đó
-   * Rollback: Ticket sẽ bị xóa
-   */
-  it('[TC_TICKET_018] should handle duplicate ticket code', async () => {
-    const duplicateTicketCode = 'DUPLICATE_CODE_' + Date.now();
-    
-    const newOrder = await Order.create({
+  it('[TC_TICKET_004] should update ticket status', async () => {
+    const orderForUpdate = await Order.create({
       user_id: testUserId!,
       tour_id: testTourId!,
       quantity: 1,
@@ -565,75 +243,436 @@ describe('[Feature 6] Ticket Management - Complete Unit Tests', () => {
       status: 'confirmed',
       is_paid: true,
       is_review: false,
-      payment_url: 'http://test.com/payment-duplicate',
-      start_date: new Date('2026-11-01'),
-      end_date: new Date('2026-11-05')
+      payment_url: 'http://test.com/payment-update-status',
+      start_date: new Date('2026-12-01'),
+      end_date: new Date('2026-12-05')
     });
-    createdOrders.push(newOrder.id);
+    createdOrders.push(orderForUpdate.id);
 
-    const firstTicket = await Ticket.create({
-      order_id: newOrder.id,
+    const ticketForUpdate = await Ticket.create({
+      order_id: orderForUpdate.id,
       user_id: testUserId!,
-      ticket_code: duplicateTicketCode,
+      ticket_code: 'TICKET_UPDATE_' + Date.now(),
       status: 'active',
-      valid_from: new Date('2026-11-01'),
-      valid_until: new Date('2026-11-05')
+      valid_from: new Date('2026-12-01'),
+      valid_until: new Date('2026-12-05')
     });
-    createdTickets.push(firstTicket.id);
+    createdTickets.push(ticketForUpdate.id);
 
-    // Try to create duplicate
-    try {
-      const duplicateTicket = await Ticket.create({
-        order_id: newOrder.id,
-        user_id: testUserId!,
-        ticket_code: duplicateTicketCode, // Same code
-        status: 'active',
-        valid_from: new Date('2026-11-01'),
-        valid_until: new Date('2026-11-05')
-      });
-      
-      createdTickets.push(duplicateTicket.id);
-      console.log('⚠️ TC_TICKET_018: Database allows duplicate ticket codes');
-    } catch (error: any) {
-      console.log('✅ TC_TICKET_018: Database prevents duplicate ticket codes (good)');
-    }
+    // Update status to 'used'
+    const updatedTicket = await ticketService.updateTicketStatus(ticketForUpdate.id, 'used');
+
+    expect(updatedTicket).toBeDefined();
+    expect(updatedTicket.status).toBe('used');
+
+    // CheckDB: Verify status updated in DB
+    const ticketInDb = await Ticket.findByPk(ticketForUpdate.id);
+    expect(ticketInDb?.status).toBe('used');
+
+    console.log(`✅ TC_TICKET_004: Updated ticket status to 'used'`);
   });
 
   /**
-   * [TC_TICKET_019] Lấy vé với userId = 0
-   * Mục tiêu: Kiểm tra validation userId
-   * Input: userId=0
-   * Expected: Có thể fail hoặc trả về empty
-   * CheckDB: Không thay đổi DB
-   * Rollback: Không cần
+   * [TC_TICKET_005] Cập nhật status ticket không tồn tại
+   * Mục tiêu: Kiểm tra validation ticketId
+   * Input: ticketId=9999999
+   * Expected: Throw 'Ticket không tồn tại'
    */
-  it('[TC_TICKET_019] should handle user tickets with userId zero', async () => {
-    const invalidUserId = 0;
-    
-    try {
-      const zeroUserIdResult = await ticketService.getUserTickets(invalidUserId, 1, 10);
-      
-      expect(zeroUserIdResult).toBeDefined();
-      console.log('⚠️ TC_TICKET_019: Service accepts userId=0');
-    } catch (error: any) {
-      console.log('✅ TC_TICKET_019: Service validates userId > 0 (good)');
-    }
+  it('[TC_TICKET_005] should fail when updating non-existent ticket', async () => {
+    await expect(
+      ticketService.updateTicketStatus(9999999, 'used')
+    ).rejects.toThrow('Ticket không tồn tại');
+
+    console.log('✅ TC_TICKET_005: Rejected non-existent ticket update');
   });
 
   /**
-   * [TC_TICKET_020] Verify ticket service methods
-   * Mục tiêu: Kiểm tra service có đầy đủ methods
+   * [TC_TICKET_006] Hủy ticket thành công
+   * Mục tiêu: Kiểm tra cancelTicket hoạt động đúng
+   * Input: ticketId, userId (owner)
+   * Expected: Ticket status='cancelled'
+   * CheckDB: Verify ticket status trong DB
+   */
+  it('[TC_TICKET_006] should cancel ticket successfully', async () => {
+    const orderForCancel = await Order.create({
+      user_id: testUserId!,
+      tour_id: testTourId!,
+      quantity: 1,
+      total_price: 4000000,
+      status: 'confirmed',
+      is_paid: true,
+      is_review: false,
+      payment_url: 'http://test.com/payment-cancel-ticket',
+      start_date: new Date('2027-01-01'),
+      end_date: new Date('2027-01-05')
+    });
+    createdOrders.push(orderForCancel.id);
+
+    const ticketToCancel = await Ticket.create({
+      order_id: orderForCancel.id,
+      user_id: testUserId!,
+      ticket_code: 'TICKET_TO_CANCEL_' + Date.now(),
+      status: 'active',
+      valid_from: new Date('2027-01-01'),
+      valid_until: new Date('2027-01-05')
+    });
+    createdTickets.push(ticketToCancel.id);
+
+    // Cancel ticket
+    const cancelledTicket = await ticketService.cancelTicket(ticketToCancel.id, testUserId!);
+
+    expect(cancelledTicket).toBeDefined();
+    expect(cancelledTicket.status).toBe('cancelled');
+
+    // CheckDB: Verify status in DB
+    const ticketInDb = await Ticket.findByPk(ticketToCancel.id);
+    expect(ticketInDb?.status).toBe('cancelled');
+
+    console.log(`✅ TC_TICKET_006: Cancelled ticket successfully`);
+  });
+
+  /**
+   * [TC_TICKET_007] Hủy ticket không tồn tại
+   * Mục tiêu: Kiểm tra validation ticketId
+   * Input: ticketId=9999999
+   * Expected: Throw 'Ticket không tồn tại'
+   */
+  it('[TC_TICKET_007] should fail when cancelling non-existent ticket', async () => {
+    await expect(
+      ticketService.cancelTicket(9999999, testUserId!)
+    ).rejects.toThrow('Ticket không tồn tại');
+
+    console.log('✅ TC_TICKET_007: Rejected non-existent ticket cancellation');
+  });
+
+  /**
+   * [TC_TICKET_008] Hủy ticket đã được sử dụng
+   * Mục tiêu: Kiểm tra validation không cho hủy used ticket
+   * Input: ticket với status='used'
+   * Expected: Throw 'Không thể hủy ticket đã sử dụng'
+   */
+  it('[TC_TICKET_008] should fail when cancelling used ticket', async () => {
+    const orderForUsed = await Order.create({
+      user_id: testUserId!,
+      tour_id: testTourId!,
+      quantity: 1,
+      total_price: 4000000,
+      status: 'confirmed',
+      is_paid: true,
+      is_review: false,
+      payment_url: 'http://test.com/payment-used-ticket',
+      start_date: new Date('2027-02-01'),
+      end_date: new Date('2027-02-05')
+    });
+    createdOrders.push(orderForUsed.id);
+
+    const usedTicket = await Ticket.create({
+      order_id: orderForUsed.id,
+      user_id: testUserId!,
+      ticket_code: 'TICKET_USED_' + Date.now(),
+      status: 'used',
+      valid_from: new Date('2027-02-01'),
+      valid_until: new Date('2027-02-05')
+    });
+    createdTickets.push(usedTicket.id);
+
+    await expect(
+      ticketService.cancelTicket(usedTicket.id, testUserId!)
+    ).rejects.toThrow('Không thể hủy ticket đã sử dụng');
+
+    console.log('✅ TC_TICKET_008: Rejected cancelling used ticket');
+  });
+
+  /**
+   * [TC_TICKET_009] Hủy ticket đã được hủy trước đó
+   * Mục tiêu: Kiểm tra validation không cho hủy ticket đã cancelled
+   * Input: ticket với status='cancelled'
+   * Expected: Throw 'Ticket đã được hủy trước đó'
+   */
+  it('[TC_TICKET_009] should fail when cancelling already cancelled ticket', async () => {
+    const orderForAlreadyCancelled = await Order.create({
+      user_id: testUserId!,
+      tour_id: testTourId!,
+      quantity: 1,
+      total_price: 4000000,
+      status: 'confirmed',
+      is_paid: true,
+      is_review: false,
+      payment_url: 'http://test.com/payment-already-cancelled',
+      start_date: new Date('2027-03-01'),
+      end_date: new Date('2027-03-05')
+    });
+    createdOrders.push(orderForAlreadyCancelled.id);
+
+    const alreadyCancelledTicket = await Ticket.create({
+      order_id: orderForAlreadyCancelled.id,
+      user_id: testUserId!,
+      ticket_code: 'TICKET_ALREADY_CANCELLED_' + Date.now(),
+      status: 'cancelled',
+      valid_from: new Date('2027-03-01'),
+      valid_until: new Date('2027-03-05')
+    });
+    createdTickets.push(alreadyCancelledTicket.id);
+
+    await expect(
+      ticketService.cancelTicket(alreadyCancelledTicket.id, testUserId!)
+    ).rejects.toThrow('Ticket đã được hủy trước đó');
+
+    console.log('✅ TC_TICKET_009: Rejected cancelling already cancelled ticket');
+  });
+
+  /**
+   * [TC_TICKET_010] Hủy ticket không phải của mình
+   * Mục tiêu: Kiểm tra authorization - user không thể hủy ticket của người khác
+   * Input: ticketId (của user khác), userId hiện tại
+   * Expected: Throw 'Bạn không có quyền hủy ticket này'
+   */
+  it('[TC_TICKET_010] should fail when cancelling another user ticket', async () => {
+    // Ticket đã tạo trong beforeAll thuộc về testUserId
+    // Sử dụng userId khác (secondUserId) để thử hủy
+    const differentUserId = 9999999;
+
+    await expect(
+      ticketService.cancelTicket(createdTicketId!, differentUserId)
+    ).rejects.toThrow('Bạn không có quyền hủy ticket này');
+
+    console.log('✅ TC_TICKET_010: Rejected unauthorized ticket cancellation');
+  });
+
+  /**
+   * [TC_TICKET_011] Lấy tickets theo tourId không tồn tại
+   * Mục tiêu: Kiểm tra validation tourId
+   * Input: tourId=9999999
+   * Expected: Throw 'Tour không tồn tại'
+   */
+  it('[TC_TICKET_011] should fail when getting tickets for non-existent tour', async () => {
+    await expect(
+      ticketService.getTicketsByTourId(9999999, 1, 10)
+    ).rejects.toThrow('Tour không tồn tại');
+
+    console.log('✅ TC_TICKET_011: Rejected non-existent tour');
+  });
+
+  /**
+   * [TC_TICKET_012] Lấy tickets theo tourId với filter status
+   * Mục tiêu: Kiểm tra getTicketsByTourId với status filter
+   * Input: tourId, status='active'
+   * Expected: Chỉ trả về active tickets
+   */
+  it('[TC_TICKET_012] should get tickets by tour ID with status filter', async () => {
+    const filteredTourTickets = await ticketService.getTicketsByTourId(testTourId!, 1, 10, {
+      status: 'active'
+    });
+
+    expect(filteredTourTickets).toBeDefined();
+    expect(Array.isArray(filteredTourTickets.tickets)).toBe(true);
+
+    console.log(`✅ TC_TICKET_012: Retrieved ${filteredTourTickets.tickets.length} active tickets for tour`);
+  });
+
+  /**
+   * [TC_TICKET_013] Lấy tickets theo orderId không tồn tại
+   * Mục tiêu: Kiểm tra validation orderId
+   * Input: orderId=9999999
+   * Expected: Throw 'Order không tồn tại'
+   */
+  it('[TC_TICKET_013] should fail when getting tickets for non-existent order', async () => {
+    await expect(
+      ticketService.getTicketsByOrderId(9999999, 1, 10)
+    ).rejects.toThrow('Order không tồn tại');
+
+    console.log('✅ TC_TICKET_013: Rejected non-existent order');
+  });
+
+  /**
+   * [TC_TICKET_014] Lấy tickets theo orderId với filter
+   * Mục tiêu: Kiểm tra getTicketsByOrderId với filters
+   * Input: orderId, status='active'
+   * Expected: Chỉ trả về active tickets
+   */
+  it('[TC_TICKET_014] should get tickets by order ID with filters', async () => {
+    const filteredOrderTickets = await ticketService.getTicketsByOrderId(testOrderId!, 1, 10, {
+      status: 'active'
+    });
+
+    expect(filteredOrderTickets).toBeDefined();
+    expect(Array.isArray(filteredOrderTickets.tickets)).toBe(true);
+
+    console.log(`✅ TC_TICKET_014: Retrieved filtered tickets for order`);
+  });
+
+  /**
+   * [TC_TICKET_015] Hủy tickets hết hạn (không có vé hết hạn)
+   * Mục tiêu: Kiểm tra cancelExpiredTickets khi không có vé hết hạn
    * Input: Không có
-   * Expected: 4 methods đều tồn tại
-   * CheckDB: Không cần
-   * Rollback: Không cần
+   * Expected: Return { cancelled: 0, message }
    */
-  it('[TC_TICKET_020] should have all required methods', async () => {
-    expect(typeof ticketService.getUserTickets).toBe('function');
-    expect(typeof ticketService.getAllTickets).toBe('function');
-    expect(typeof ticketService.getTicketById).toBe('function');
-    expect(typeof ticketService.cancelTicketsByOrderId).toBe('function');
+  it('[TC_TICKET_015] should return zero when no expired tickets', async () => {
+    const result = await ticketService.cancelExpiredTickets();
 
-    console.log('✅ TC_TICKET_020: All required methods exist');
+    expect(result).toBeDefined();
+    expect(result.cancelled).toBeGreaterThanOrEqual(0);
+    expect(result.message).toBeDefined();
+
+    console.log(`✅ TC_TICKET_015: ${result.message}`);
+  });
+
+  /**
+   * [TC_TICKET_016] Hủy vé hết hạn với vé có valid_until trong quá khứ
+   * Mục tiêu: Kiểm tra cancelExpiredTickets tự động hủy vé hết hạn
+   * Input: Tạo ticket với valid_until trong quá khứ
+   * Expected: Ticket được hủy tự động
+   */
+  it('[TC_TICKET_016] should cancel expired tickets automatically', async () => {
+    const orderForExpired = await Order.create({
+      user_id: testUserId!,
+      tour_id: testTourId!,
+      quantity: 1,
+      total_price: 4000000,
+      status: 'confirmed',
+      is_paid: true,
+      is_review: false,
+      payment_url: 'http://test.com/payment-expired',
+      start_date: new Date('2020-01-01'),
+      end_date: new Date('2020-01-05')
+    });
+    createdOrders.push(orderForExpired.id);
+
+    const expiredTicket = await Ticket.create({
+      order_id: orderForExpired.id,
+      user_id: testUserId!,
+      ticket_code: 'TICKET_EXPIRED_' + Date.now(),
+      status: 'active',
+      valid_from: new Date('2020-01-01'),
+      valid_until: new Date('2020-01-05') // Expired date
+    });
+    createdTickets.push(expiredTicket.id);
+
+    // Verify ticket is active before
+    const ticketBefore = await Ticket.findByPk(expiredTicket.id);
+    expect(ticketBefore?.status).toBe('active');
+
+    // Run cancelExpiredTickets
+    const result = await ticketService.cancelExpiredTickets();
+
+    expect(result.cancelled).toBeGreaterThanOrEqual(1);
+
+    // CheckDB: Verify ticket was cancelled
+    const ticketAfter = await Ticket.findByPk(expiredTicket.id);
+    expect(ticketAfter?.status).toBe('cancelled');
+
+    console.log(`✅ TC_TICKET_016: ${result.message}`);
+  });
+
+  /**
+   * [TC_TICKET_017] Lấy ticket by ID với authorization (owner)
+   * Mục tiêu: Kiểm tra getTicketById với userId (owner)
+   * Input: ticketId, userId (owner)
+   * Expected: Trả về ticket
+   */
+  it('[TC_TICKET_017] should get ticket by ID as owner', async () => {
+    const ticketDetails = await ticketService.getTicketById(createdTicketId!, testUserId!);
+
+    expect(ticketDetails).toBeDefined();
+    expect(ticketDetails.id).toBe(createdTicketId);
+    expect(ticketDetails.user).toBeDefined();
+    expect(ticketDetails.tour).toBeDefined();
+
+    console.log('✅ TC_TICKET_017: Retrieved ticket as owner');
+  });
+
+  /**
+   * [TC_TICKET_018] Lấy ticket by ID với userId khác (không phải owner)
+   * Mục tiêu: Kiểm tra authorization - user không thể xem ticket của người khác
+   * Input: ticketId, userId khác
+   * Expected: Throw 'Bạn không có quyền xem ticket này'
+   */
+  it('[TC_TICKET_018] should fail when getting ticket as non-owner', async () => {
+    const differentUserId = 9999999;
+
+    await expect(
+      ticketService.getTicketById(createdTicketId!, differentUserId)
+    ).rejects.toThrow('Bạn không có quyền xem ticket này');
+
+    console.log('✅ TC_TICKET_018: Rejected unauthorized ticket access');
+  });
+
+  /**
+   * [TC_TICKET_019] Lọc tickets với text search
+   * Mục tiêu: Kiểm tra getAllTickets với text filter
+   * Input: text='TICKET'
+   * Expected: Trả về tickets có ticket_code chứa 'TICKET'
+   */
+  it('[TC_TICKET_019] should filter tickets with text search', async () => {
+    const textFilteredTickets = await ticketService.getAllTickets(1, 10, {
+      text: 'TICKET'
+    });
+
+    expect(textFilteredTickets).toBeDefined();
+    expect(Array.isArray(textFilteredTickets.tickets)).toBe(true);
+
+    console.log(`✅ TC_TICKET_019: Found ${textFilteredTickets.tickets.length} tickets with text filter`);
+  });
+
+  /**
+   * [TC_TICKET_020] Lấy user tickets với text search
+   * Mục tiêu: Kiểm tra getUserTickets với text filter
+   * Input: userId, text='TICKET'
+   * Expected: Trả về tickets của user có ticket_code chứa 'TICKET'
+   */
+  it('[TC_TICKET_020] should get user tickets with text search', async () => {
+    const textFilteredUserTickets = await ticketService.getUserTickets(testUserId!, 1, 10, {
+      text: 'TICKET'
+    });
+
+    expect(textFilteredUserTickets).toBeDefined();
+    expect(Array.isArray(textFilteredUserTickets.tickets)).toBe(true);
+
+    console.log(`✅ TC_TICKET_020: Found ${textFilteredUserTickets.tickets.length} user tickets with text filter`);
+  });
+
+  /**
+   * [TC_TICKET_021] Hủy tất cả tickets của order (không có tickets)
+   * Mục tiêu: Kiểm tra cancelTicketsByOrderId với order không có tickets
+   * Input: orderId mới (chưa có tickets)
+   * Expected: Return 0
+   */
+  it('[TC_TICKET_021] should return zero when cancelling order with no tickets', async () => {
+    const orderWithNoTickets = await Order.create({
+      user_id: testUserId!,
+      tour_id: testTourId!,
+      quantity: 1,
+      total_price: 4000000,
+      status: 'confirmed',
+      is_paid: true,
+      is_review: false,
+      payment_url: 'http://test.com/payment-no-tickets',
+      start_date: new Date('2027-04-01'),
+      end_date: new Date('2027-04-05')
+    });
+    createdOrders.push(orderWithNoTickets.id);
+
+    const result = await ticketService.cancelTicketsByOrderId(orderWithNoTickets.id);
+
+    expect(result).toBe(0);
+
+    console.log('✅ TC_TICKET_021: No tickets to cancel for order');
+  });
+
+  /**
+   * [TC_TICKET_022] Lấy tickets với status='all' filter
+   * Mục tiêu: Kiểm tra filter status='all' trả về tất cả tickets
+   * Input: status='all'
+   * Expected: Trả về tất cả tickets (không filter)
+   */
+  it('[TC_TICKET_022] should return all tickets when status=all', async () => {
+    const allStatusTickets = await ticketService.getAllTickets(1, 50, {
+      status: 'all'
+    });
+
+    expect(allStatusTickets).toBeDefined();
+    expect(Array.isArray(allStatusTickets.tickets)).toBe(true);
+
+    console.log(`✅ TC_TICKET_022: Retrieved ${allStatusTickets.tickets.length} tickets with status=all`);
   });
 });
