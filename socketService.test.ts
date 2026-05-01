@@ -1,527 +1,709 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import socketService from '../services/socketService';
 
 /**
  * Feature 17: Socket Service - Comprehensive Unit Tests
- * ✅ Test Case IDs rõ ràng
- * ✅ CheckDB: Không áp dụng (socket service không truy cập DB)
+ * ✅ Test Case IDs rõ ràng (đã đánh số lại từ 001 đến 021)
+ * ✅ Mocking: Sử dụng mocks cho HTTP server và Socket.IO
  * ✅ Rollback: Không cần (không thay đổi DB)
  * ❗ Tests có cả PASS và edge cases thực tế
  * 
  * Services được test:
- * - initialize()
- * - sendNotificationToUser()
- * - sendNotificationToAllUsers()
+ * - initialize() - Khởi tạo Socket.IO server
+ * - sendNotificationToUser() - Gửi notification cho user cụ thể
+ * - sendNotificationToAllUsers() - Gửi broadcast notifications
+ * - getIO() - Lấy Socket.IO instance
+ * - authenticateSocket() - Xác thực socket connection (private)
+ * - handleConnection() - Xử lý kết nối socket (private)
  * 
- * Lưu ý: Socket service xử lý real-time communication, không truy cập DB
+ * Lưu ý: Socket service xử lý real-time communication, có DB queries trong authentication
  */
 describe('[Feature 17] Socket Service - Comprehensive Unit Tests', () => {
+  let mockServer: any;
+  let mockIo: any;
+  let mockSocket: any;
+
+  beforeEach(() => {
+    // Reset mock trước mỗi test
+    mockServer = {
+      listen: vi.fn(),
+      on: vi.fn()
+    };
+
+    mockIo = {
+      use: vi.fn(),
+      on: vi.fn(),
+      to: vi.fn().mockReturnThis(),
+      emit: vi.fn()
+    };
+
+    mockSocket = {
+      id: 'test-socket-id',
+      userId: 123,
+      userType: 'user' as const,
+      handshake: {
+        auth: { token: 'test-token' },
+        headers: {}
+      },
+      join: vi.fn(),
+      disconnect: vi.fn(),
+      on: vi.fn(),
+      emit: vi.fn()
+    };
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    // Đảm bảo reset io và connectedUsers sau mỗi test
+    (socketService as any).io = null;
+    (socketService as any).connectedUsers = new Map();
+    (socketService as any).connectedAdmins = new Map();
+  });
+
+
   /**
-   * [TC_SOCKET_001] Kiểm tra socketService tồn tại
-   * Mục tiêu: Verify socketService được export đúng
+   * [TC_SOCKET_001] Kiểm tra getIO khi chưa initialize
+   * Mục tiêu: Verify getIO trả về null khi chưa khởi tạo
    * Input: Không có
-   * Expected: socketService object tồn tại
+   * Expected: getIO() returns null
    * CheckDB: Không truy cập DB
    * Rollback: Không cần
    */
-  it('[TC_SOCKET_001] should have socketService', async () => {
-    expect(socketService).toBeDefined();
-    expect(typeof socketService).toBe('object');
+  it('[TC_SOCKET_001] should return null when getIO called before initialize', async () => {
+    const io = socketService.getIO();
+    expect(io).toBeNull();
 
-    console.log('✅ TC_SOCKET_001: Service exists');
+    console.log('✅ TC_SOCKET_001: getIO returns null before initialization');
   });
 
   /**
-   * [TC_SOCKET_002] Kiểm tra method initialize tồn tại
-   * Mục tiêu: Verify initialize method được export
-   * Input: Không có
-   * Expected: initialize là function
+   * [TC_SOCKET_002] Gửi notification khi chưa initialize
+   * Mục tiêu: Kiểm tra sendNotificationToUser xử lý khi io chưa được khởi tạo
+   * Input: userId, notification
+   * Expected: Return false, log error
    * CheckDB: Không truy cập DB
    * Rollback: Không cần
    */
-  it('[TC_SOCKET_002] should have initialize method', async () => {
-    expect(typeof socketService.initialize).toBe('function');
-
-    console.log('✅ TC_SOCKET_002: Initialize method exists');
-  });
-
-  /**
-   * [TC_SOCKET_003] Kiểm tra method sendNotificationToUser tồn tại
-   * Mục tiêu: Verify sendNotificationToUser method được export
-   * Input: Không có
-   * Expected: sendNotificationToUser là function
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_SOCKET_003] should have sendNotificationToUser method', async () => {
-    expect(typeof socketService.sendNotificationToUser).toBe('function');
-
-    console.log('✅ TC_SOCKET_003: sendNotificationToUser method exists');
-  });
-
-  /**
-   * [TC_SOCKET_004] Kiểm tra method sendNotificationToAllUsers tồn tại
-   * Mục tiêu: Verify sendNotificationToAllUsers method được export
-   * Input: Không có
-   * Expected: sendNotificationToAllUsers là function
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_SOCKET_004] should have sendNotificationToAllUsers method', async () => {
-    expect(typeof socketService.sendNotificationToAllUsers).toBe('function');
-
-    console.log('✅ TC_SOCKET_004: sendNotificationToAllUsers method exists');
-  });
-
-  /**
-   * [TC_SOCKET_005] Gửi notification cho user với data hợp lệ
-   * Mục tiêu: Kiểm tra sendNotificationToUser chấp nhận notification object
-   * Input: userId=9999999, notification object với đầy đủ fields
-   * Expected: Không throw error (hoặc gracefully handle khi socket chưa init)
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_SOCKET_005] should handle sendNotificationToUser with valid data', async () => {
-    const targetUserId = 9999999;
+  it('[TC_SOCKET_002] should return false when sending notification before initialize', async () => {
     const testNotification = {
       id: 1,
       title: 'Test Notification',
-      message: 'Test notification message',
+      message: 'Test message',
       type: 'order' as const,
-      created_at: new Date(),
-      sender: 'admin',
-      admin_id: 1
+      created_at: new Date()
     };
 
-    try {
-      // Test với userId không tồn tại - chỉ test structure
-      socketService.sendNotificationToUser(targetUserId, testNotification);
-      console.log('✅ TC_SOCKET_005: sendNotificationToUser executed without error');
-    } catch (error: any) {
-      // May fail if socket not initialized - this is acceptable
-      console.log('✅ TC_SOCKET_005: sendNotificationToUser handled gracefully (socket not initialized)');
-    }
+    const result = socketService.sendNotificationToUser(123, testNotification);
+    expect(result).toBe(false);
+
+    console.log('✅ TC_SOCKET_002: Returns false when not initialized');
   });
 
   /**
-   * [TC_SOCKET_006] Gửi broadcast notification đến tất cả users
-   * Mục tiêu: Kiểm tra sendNotificationToAllUsers chấp nhận notification object
-   * Input: notification object với type='promotion'
-   * Expected: Không throw error (hoặc gracefully handle)
+   * [TC_SOCKET_003] Gửi broadcast notification khi chưa initialize
+   * Mục tiêu: Kiểm tra sendNotificationToAllUsers xử lý khi io chưa được khởi tạo
+   * Input: notification
+   * Expected: Return false, log error
    * CheckDB: Không truy cập DB
    * Rollback: Không cần
    */
-  it('[TC_SOCKET_006] should handle sendNotificationToAllUsers', async () => {
+  it('[TC_SOCKET_003] should return false when broadcasting before initialize', async () => {
     const broadcastNotification = {
-      id: 1,
-      title: 'Broadcast Notification',
-      message: 'Test broadcast message',
-      type: 'promotion' as const,
-      created_at: new Date(),
-      sender: 'admin',
-      admin_id: 1
-    };
-
-    try {
-      socketService.sendNotificationToAllUsers(broadcastNotification);
-      console.log('✅ TC_SOCKET_006: sendNotificationToAllUsers executed without error');
-    } catch (error: any) {
-      // May fail if socket not initialized - this is acceptable
-      console.log('✅ TC_SOCKET_006: sendNotificationToAllUsers handled gracefully (socket not initialized)');
-    }
-  });
-
-  /**
-   * [TC_SOCKET_007] Kiểm tra service có đầy đủ methods
-   * Mục tiêu: Verify socketService có tất cả methods cần thiết
-   * Input: Không có
-   * Expected: 3 methods đều tồn tại
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_SOCKET_007] should have all required methods', async () => {
-    expect(typeof socketService.initialize).toBe('function');
-    expect(typeof socketService.sendNotificationToUser).toBe('function');
-    expect(typeof socketService.sendNotificationToAllUsers).toBe('function');
-
-    console.log('✅ TC_SOCKET_007: All required methods exist');
-  });
-
-  /**
-   * [TC_SOCKET_008] Gửi notification với type='order'
-   * Mục tiêu: Kiểm tra notification type 'order' được chấp nhận
-   * Input: notification với type='order'
-   * Expected: Không throw error
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_SOCKET_008] should handle notification with type order', async () => {
-    const targetUserId = 12345;
-    const orderNotification = {
       id: 2,
-      title: 'Order Update',
-      message: 'Your order has been confirmed',
-      type: 'order' as const,
-      created_at: new Date(),
-      sender: 'system',
-      admin_id: null
-    };
-
-    try {
-      socketService.sendNotificationToUser(targetUserId, orderNotification);
-      console.log('✅ TC_SOCKET_008: Order type notification handled');
-    } catch (error: any) {
-      console.log('✅ TC_SOCKET_008: Order type notification handled gracefully');
-    }
-  });
-
-  /**
-   * [TC_SOCKET_009] Gửi notification với type='promotion'
-   * Mục tiêu: Kiểm tra notification type 'promotion' được chấp nhận
-   * Input: notification với type='promotion'
-   * Expected: Không throw error
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_SOCKET_009] should handle notification with type promotion', async () => {
-    const targetUserId = 67890;
-    const promotionNotification = {
-      id: 3,
-      title: 'Special Offer',
-      message: '50% off on all tours!',
+      title: 'Broadcast',
+      message: 'Broadcast message',
       type: 'promotion' as const,
-      created_at: new Date(),
-      sender: 'marketing',
-      admin_id: 5
+      created_at: new Date()
     };
 
-    try {
-      socketService.sendNotificationToUser(targetUserId, promotionNotification);
-      console.log('✅ TC_SOCKET_009: Promotion type notification handled');
-    } catch (error: any) {
-      console.log('✅ TC_SOCKET_009: Promotion type notification handled gracefully');
-    }
+    const result = socketService.sendNotificationToAllUsers(broadcastNotification);
+    expect(result).toBe(false);
+
+    console.log('✅ TC_SOCKET_003: Returns false when broadcasting before initialize');
   });
 
   /**
-   * [TC_SOCKET_010] Gửi notification với userId = 0
-   * Mục tiêu: Kiểm tra validation userId
-   * Input: userId=0
-   * Expected: Có thể fail hoặc ignore
+   * [TC_SOCKET_004] Kiểm tra getIO sau khi initialize
+   * Mục tiêu: Verify getIO trả về Server instance sau khi khởi tạo
+   * Input: Mock HTTP server
+   * Expected: getIO() returns Server instance
    * CheckDB: Không truy cập DB
-   * Rollback: Không cần
+   * Rollback: Cleanup io sau test
    */
-  it('[TC_SOCKET_010] should handle notification with userId zero', async () => {
-    const invalidUserId = 0;
-    const testNotification = {
-      id: 4,
-      title: 'Test',
-      message: 'Test with userId=0',
-      type: 'order' as const,
-      created_at: new Date(),
-      sender: 'admin',
-      admin_id: 1
+  it('[TC_SOCKET_004] should return Server instance after initialize', async () => {
+    vi.resetModules();
+
+    const mockIo = {
+      use: vi.fn(),
+      on: vi.fn(),
+      to: vi.fn().mockReturnThis(),
+      emit: vi.fn()
     };
 
-    try {
-      socketService.sendNotificationToUser(invalidUserId, testNotification);
-      console.log('⚠️ TC_SOCKET_010: Service accepts userId=0');
-    } catch (error: any) {
-      console.log('✅ TC_SOCKET_010: Service validates userId > 0 (good)');
-    }
+    const mockServer = {};
+
+    // ✅ Constructor function (KHÔNG dùng arrow)
+    const MockServerClass = vi.fn(function (this: any) {
+      return mockIo;
+    });
+
+    vi.doMock('socket.io', () => ({
+      Server: MockServerClass
+    }));
+
+    const { default: socketService } = await import('../services/socketService');
+
+    const result = socketService.initialize(mockServer as any);
+
+    expect(MockServerClass).toHaveBeenCalledTimes(1);
+    expect(result).toBe(mockIo);
+
+    const io = socketService.getIO();
+    expect(io).toBe(result);
   });
 
+
   /**
-   * [TC_SOCKET_011] Gửi notification với userId âm
-   * Mục tiêu: Kiểm tra validation userId âm
-   * Input: userId=-1
-   * Expected: Có thể fail hoặc ignore
+   * [TC_SOCKET_005] Gửi notification với minimal object
+   * Mục tiêu: Kiểm tra service chấp nhận notification với ít fields
+   * Input: notification với required fields only
+   * Expected: Gửi thành công
    * CheckDB: Không truy cập DB
    * Rollback: Không cần
    */
-  it('[TC_SOCKET_011] should handle notification with negative userId', async () => {
-    const negativeUserId = -1;
-    const testNotification = {
-      id: 5,
-      title: 'Test',
-      message: 'Test with negative userId',
-      type: 'order' as const,
-      created_at: new Date(),
-      sender: 'admin',
-      admin_id: 1
+  it('[TC_SOCKET_005] should handle minimal notification object', async () => {
+    const mockTo = vi.fn().mockReturnThis();
+    const mockEmit = vi.fn();
+
+    (socketService as any).io = {
+      to: mockTo,
+      emit: mockEmit
     };
 
-    try {
-      socketService.sendNotificationToUser(negativeUserId, testNotification);
-      console.log('⚠️ TC_SOCKET_011: Service accepts negative userId');
-    } catch (error: any) {
-      console.log('✅ TC_SOCKET_011: Service validates userId > 0 (good)');
-    }
-  });
-
-  /**
-   * [TC_SOCKET_012] Gửi notification với title rỗng
-   * Mục tiêu: Kiểm tra validation title field
-   * Input: title=''
-   * Expected: Có thể pass hoặc fail
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_SOCKET_012] should handle notification with empty title', async () => {
-    const targetUserId = 11111;
-    const emptyTitleNotification = {
-      id: 6,
-      title: '', // Empty title
-      message: 'Notification with empty title',
-      type: 'order' as const,
-      created_at: new Date(),
-      sender: 'admin',
-      admin_id: 1
-    };
-
-    try {
-      socketService.sendNotificationToUser(targetUserId, emptyTitleNotification);
-      console.log('⚠️ TC_SOCKET_012: Service accepts empty title');
-    } catch (error: any) {
-      console.log('✅ TC_SOCKET_012: Service validates title required (good)');
-    }
-  });
-
-  /**
-   * [TC_SOCKET_013] Gửi notification với message rỗng
-   * Mục tiêu: Kiểm tra validation message field
-   * Input: message=''
-   * Expected: Có thể pass hoặc fail
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_SOCKET_013] should handle notification with empty message', async () => {
-    const targetUserId = 22222;
-    const emptyMessageNotification = {
-      id: 7,
-      title: 'Empty Message Test',
-      message: '', // Empty message
-      type: 'promotion' as const,
-      created_at: new Date(),
-      sender: 'admin',
-      admin_id: 1
-    };
-
-    try {
-      socketService.sendNotificationToUser(targetUserId, emptyMessageNotification);
-      console.log('⚠️ TC_SOCKET_013: Service accepts empty message');
-    } catch (error: any) {
-      console.log('✅ TC_SOCKET_013: Service validates message required (good)');
-    }
-  });
-
-  /**
-   * [TC_SOCKET_014] Gửi notification với userId rất lớn
-   * Mục tiêu: Kiểm tra handling userId lớn
-   * Input: userId=999999999
-   * Expected: Không throw error (gracefully handle)
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_SOCKET_014] should handle notification with very large userId', async () => {
-    const veryLargeUserId = 999999999;
-    const testNotification = {
-      id: 8,
-      title: 'Large UserId Test',
-      message: 'Testing with very large userId',
-      type: 'order' as const,
-      created_at: new Date(),
-      sender: 'admin',
-      admin_id: 1
-    };
-
-    try {
-      socketService.sendNotificationToUser(veryLargeUserId, testNotification);
-      console.log('✅ TC_SOCKET_014: Service handles large userId');
-    } catch (error: any) {
-      console.log('✅ TC_SOCKET_014: Service handles large userId gracefully');
-    }
-  });
-
-  /**
-   * [TC_SOCKET_015] Gửi broadcast notification rỗng
-   * Mục tiêu: Kiểm tra validation notification object
-   * Input: notification với data minimal
-   * Expected: Có thể fail hoặc handle
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_SOCKET_015] should handle broadcast with minimal notification', async () => {
     const minimalNotification = {
-      id: 9,
       title: 'Minimal',
-      message: 'Minimal notification',
+      message: 'Minimal notification'
+    };
+
+    const result = socketService.sendNotificationToUser(555, minimalNotification);
+
+    expect(result).toBe(true);
+    expect(mockEmit).toHaveBeenCalled();
+
+    console.log('✅ TC_SOCKET_005: Handles minimal notification');
+  });
+
+  /**
+   * [TC_SOCKET_006] Broadcast với notification data lớn
+   * Mục tiêu: Kiểm tra broadcast xử lý data lớn
+   * Input: notification với large payload
+   * Expected: Gửi thành công đến tất cả users
+   * CheckDB: Không truy cập DB
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_006] should handle broadcast with large notification data', async () => {
+    const mockTo = vi.fn().mockReturnThis();
+    const mockEmit = vi.fn();
+
+    (socketService as any).io = {
+      to: mockTo,
+      emit: mockEmit
+    };
+
+    (socketService as any).connectedUsers = new Map([
+      [1, 'socket-1'],
+      [2, 'socket-2']
+    ]);
+
+    const largeNotification = {
+      id: 18,
+      title: 'Large Data Test',
+      message: 'C'.repeat(5000), // 5KB message
       type: 'promotion' as const,
       created_at: new Date(),
-      sender: 'system',
-      admin_id: null
-    };
-
-    try {
-      socketService.sendNotificationToAllUsers(minimalNotification);
-      console.log('✅ TC_SOCKET_015: Service handles minimal notification');
-    } catch (error: any) {
-      console.log('✅ TC_SOCKET_015: Service handles minimal notification gracefully');
-    }
-  });
-
-  /**
-   * [TC_SOCKET_016] Kiểm tra initialize method signature
-   * Mục tiêu: Verify initialize method có thể nhận http server
-   * Input: Không có (chỉ test signature)
-   * Expected: initialize là function có thể gọi
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_SOCKET_016] should have initialize method with correct signature', async () => {
-    expect(socketService.initialize).toBeDefined();
-    expect(typeof socketService.initialize).toBe('function');
-    expect(socketService.initialize.length).toBeGreaterThanOrEqual(0);
-
-    console.log('✅ TC_SOCKET_016: Initialize method signature verified');
-  });
-
-  /**
-   * [TC_SOCKET_017] Gửi nhiều notifications liên tiếp
-   * Mục tiêu: Kiểm tra service xử lý multiple calls
-   * Input: 3 notifications liên tiếp
-   * Expected: Không throw errors
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_SOCKET_017] should handle multiple notifications in sequence', async () => {
-    const notifications = [
-      {
-        id: 10,
-        title: 'Notification 1',
-        message: 'First notification',
-        type: 'order' as const,
-        created_at: new Date(),
-        sender: 'system',
-        admin_id: null
-      },
-      {
-        id: 11,
-        title: 'Notification 2',
-        message: 'Second notification',
-        type: 'promotion' as const,
-        created_at: new Date(),
-        sender: 'admin',
-        admin_id: 1
-      },
-      {
-        id: 12,
-        title: 'Notification 3',
-        message: 'Third notification',
-        type: 'order' as const,
-        created_at: new Date(),
-        sender: 'system',
-        admin_id: null
+      data: {
+        tours: Array(100).fill({ id: 1, name: 'Test Tour' })
       }
-    ];
+    };
 
-    let successCount = 0;
-    let errorCount = 0;
+    const result = socketService.sendNotificationToAllUsers(largeNotification);
 
-    for (const notification of notifications) {
-      try {
-        socketService.sendNotificationToUser(12345, notification);
-        successCount++;
-      } catch (error: any) {
-        errorCount++;
+    expect(result).toBe(true);
+    expect(mockEmit).toHaveBeenCalled();
+
+    console.log('✅ TC_SOCKET_006: Handles large broadcast data');
+  });
+  /**
+   * [TC_SOCKET_007] handleConnection với socket thiếu userId
+   * Mục tiêu: Kiểm tra socket bị disconnect ngay khi thiếu userId
+   * Input: socket không có userId
+   * Expected: socket.disconnect() được gọi
+   * CheckDB: Không truy cập DB
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_007] should disconnect socket when userId is missing', () => {
+    const invalidSocket = {
+      ...mockSocket,
+      userId: undefined,
+      userType: undefined,
+      join: vi.fn(),
+      disconnect: vi.fn(),
+      on: vi.fn()
+    };
+
+    (socketService as any).handleConnection(invalidSocket);
+
+    expect(invalidSocket.disconnect).toHaveBeenCalled();
+    expect(invalidSocket.join).not.toHaveBeenCalled();
+
+    console.log('✅ TC_SOCKET_007: Disconnects socket with missing userId');
+  });
+
+  /**
+   * [TC_SOCKET_008] handleConnection - sự kiện 'register' gọi với role user
+   * Mục tiêu: Kiểm tra sự kiện 'register' join đúng room khi role='user'
+   * Input: socket emit 'register' với role='user', userId=10
+   * Expected: socket.join('user:10') được gọi
+   * CheckDB: Không truy cập DB
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_008] should join user room on register event with role user', () => {
+    const userSocket = {
+      ...mockSocket,
+      userId: 10,
+      userType: 'user' as const,
+      join: vi.fn(),
+      disconnect: vi.fn(),
+      on: vi.fn((event: string, cb: Function) => {
+        if (event === 'register') {
+          // Simulate FE gửi sự kiện register
+          cb({ role: 'user', userId: 10 });
+        }
+      })
+    };
+
+    (socketService as any).handleConnection(userSocket);
+
+    // join được gọi ít nhất cho 'user:10' (từ register event)
+    expect(userSocket.join).toHaveBeenCalledWith('user:10');
+
+    console.log('✅ TC_SOCKET_008: Join user room on register event');
+  });
+
+  /**
+   * [TC_SOCKET_009] handleConnection - sự kiện 'register' gọi với role admin
+   * Mục tiêu: Kiểm tra sự kiện 'register' join đúng room khi role='admin'
+   * Input: socket emit 'register' với role='admin', userId=5
+   * Expected: socket.join('admin:5') được gọi
+   * CheckDB: Không truy cập DB
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_009] should join admin room on register event with role admin', () => {
+    const adminSocket = {
+      ...mockSocket,
+      userId: 5,
+      userType: 'admin' as const,
+      join: vi.fn(),
+      disconnect: vi.fn(),
+      on: vi.fn((event: string, cb: Function) => {
+        if (event === 'register') {
+          cb({ role: 'admin', userId: 5 });
+        }
+      })
+    };
+
+    (socketService as any).handleConnection(adminSocket);
+
+    expect(adminSocket.join).toHaveBeenCalledWith('admin:5');
+
+    console.log('✅ TC_SOCKET_009: Join admin room on register event');
+  });
+
+  /**
+   * [TC_SOCKET_010] handleConnection - sự kiện 'disconnect' xóa user khỏi connectedUsers
+   * Mục tiêu: Kiểm tra disconnect xóa entry trong connectedUsers
+   * Input: socket user ngắt kết nối
+   * Expected: connectedUsers không còn entry của userId
+   * CheckDB: Không truy cập DB
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_010] should remove user from connectedUsers on disconnect', () => {
+    (socketService as any).connectedUsers.set(99, 'socket-to-remove');
+
+    const userSocket = {
+      ...mockSocket,
+      userId: 99,
+      userType: 'user' as const,
+      join: vi.fn(),
+      disconnect: vi.fn(),
+      on: vi.fn((event: string, cb: Function) => {
+        if (event === 'disconnect') cb();
+      })
+    };
+
+    (socketService as any).handleConnection(userSocket);
+
+    expect((socketService as any).connectedUsers.has(99)).toBe(false);
+
+    console.log('✅ TC_SOCKET_010: User removed from connectedUsers on disconnect');
+  });
+
+  /**
+   * [TC_SOCKET_011] handleConnection - sự kiện 'disconnect' xóa admin khỏi connectedAdmins
+   * Mục tiêu: Kiểm tra disconnect xóa entry trong connectedAdmins
+   * Input: socket admin ngắt kết nối
+   * Expected: connectedAdmins không còn entry của adminId
+   * CheckDB: Không truy cập DB
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_011] should remove admin from connectedAdmins on disconnect', () => {
+    (socketService as any).connectedAdmins.set(7, 'socket-admin-remove');
+
+    const adminSocket = {
+      ...mockSocket,
+      userId: 7,
+      userType: 'admin' as const,
+      join: vi.fn(),
+      disconnect: vi.fn(),
+      on: vi.fn((event: string, cb: Function) => {
+        if (event === 'disconnect') cb();
+      })
+    };
+
+    (socketService as any).handleConnection(adminSocket);
+
+    expect((socketService as any).connectedAdmins.has(7)).toBe(false);
+
+    console.log('✅ TC_SOCKET_011: Admin removed from connectedAdmins on disconnect');
+  });
+
+  /**
+   * [TC_SOCKET_012] handleConnection - sự kiện 'notification:read' từ user
+   * Mục tiêu: Kiểm tra event 'notification:read' emit lại cho đúng room user
+   * Input: socket user, notificationId=42
+   * Expected: io.to('user:123').emit('notification:read', { notificationId: 42 })
+   * CheckDB: Không truy cập DB
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_012] should re-emit notification:read to user room', () => {
+    const mockTo = vi.fn().mockReturnThis();
+    const mockEmit = vi.fn();
+
+    (socketService as any).io = {
+      to: mockTo,
+      emit: mockEmit
+    };
+
+    const userSocket = {
+      ...mockSocket,
+      userId: 123,
+      userType: 'user' as const,
+      join: vi.fn(),
+      disconnect: vi.fn(),
+      on: vi.fn((event: string, cb: Function) => {
+        if (event === 'notification:read') {
+          cb({ notificationId: 42 });
+        }
+      })
+    };
+
+    (socketService as any).handleConnection(userSocket);
+
+    expect(mockTo).toHaveBeenCalledWith('user:123');
+    expect(mockEmit).toHaveBeenCalledWith('notification:read', { notificationId: 42 });
+
+    console.log('✅ TC_SOCKET_012: Re-emits notification:read to user room');
+  });
+
+  /**
+   * [TC_SOCKET_013] handleConnection - sự kiện 'notification:read' từ admin
+   * Mục tiêu: Kiểm tra event 'notification:read' emit lại cho đúng room admin
+   * Input: socket admin, notificationId=99
+   * Expected: io.to('admin:1').emit('notification:read', { notificationId: 99 })
+   * CheckDB: Không truy cập DB
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_013] should re-emit notification:read to admin room', () => {
+    const mockTo = vi.fn().mockReturnThis();
+    const mockEmit = vi.fn();
+
+    (socketService as any).io = {
+      to: mockTo,
+      emit: mockEmit
+    };
+
+    const adminSocket = {
+      ...mockSocket,
+      userId: 1,
+      userType: 'admin' as const,
+      join: vi.fn(),
+      disconnect: vi.fn(),
+      on: vi.fn((event: string, cb: Function) => {
+        if (event === 'notification:read') {
+          cb({ notificationId: 99 });
+        }
+      })
+    };
+
+    (socketService as any).handleConnection(adminSocket);
+
+    expect(mockTo).toHaveBeenCalledWith('admin:1');
+    expect(mockEmit).toHaveBeenCalledWith('notification:read', { notificationId: 99 });
+
+    console.log('✅ TC_SOCKET_013: Re-emits notification:read to admin room');
+  });
+
+  /**
+   * [TC_SOCKET_014] handleConnection - sự kiện 'ping' trả về 'pong'
+   * Mục tiêu: Kiểm tra event 'ping' phản hồi 'pong' với timestamp
+   * Input: socket emit 'ping'
+   * Expected: socket.emit('pong', { timestamp: string })
+   * CheckDB: Không truy cập DB
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_014] should respond to ping with pong containing timestamp', () => {
+    const emitSpy = vi.fn();
+
+    const userSocket = {
+      ...mockSocket,
+      userId: 123,
+      userType: 'user' as const,
+      join: vi.fn(),
+      disconnect: vi.fn(),
+      emit: emitSpy,
+      on: vi.fn((event: string, cb: Function) => {
+        if (event === 'ping') cb();
+      })
+    };
+
+    (socketService as any).handleConnection(userSocket);
+
+    expect(emitSpy).toHaveBeenCalledWith('pong', expect.objectContaining({
+      timestamp: expect.any(String)
+    }));
+
+    console.log('✅ TC_SOCKET_014: Responds to ping with pong + timestamp');
+  });
+
+  /**
+   * [TC_SOCKET_015] authenticateSocket - không có token
+   * Mục tiêu: Kiểm tra middleware gọi next(Error) khi thiếu token
+   * Input: socket.handshake.auth.token = undefined
+   * Expected: next được gọi với Error('Không tìm thấy token xác thực')
+   * CheckDB: Không truy cập DB
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_015] should call next with error when no token provided', async () => {
+    const socketWithoutToken = {
+      ...mockSocket,
+      handshake: {
+        auth: {},
+        headers: {}
       }
-    }
-
-    // All should succeed or fail gracefully
-    expect(successCount + errorCount).toBe(notifications.length);
-    console.log(`✅ TC_SOCKET_017: Processed ${notifications.length} notifications (${successCount} success, ${errorCount} errors)`);
-  });
-
-  /**
-   * [TC_SOCKET_018] Gửi notification với title rất dài
-   * Mục tiêu: Kiểm tra giới hạn độ dài title
-   * Input: title với 500 ký tự
-   * Expected: Có thể pass hoặc fail
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_SOCKET_018] should handle notification with very long title', async () => {
-    const veryLongTitle = 'A'.repeat(500); // 500 characters
-    const longTitleNotification = {
-      id: 13,
-      title: veryLongTitle,
-      message: 'Notification with very long title',
-      type: 'order' as const,
-      created_at: new Date(),
-      sender: 'admin',
-      admin_id: 1
     };
 
-    try {
-      socketService.sendNotificationToUser(33333, longTitleNotification);
-      console.log('⚠️ TC_SOCKET_018: Service accepts very long title');
-    } catch (error: any) {
-      console.log('✅ TC_SOCKET_018: Service validates title length (good)');
-    }
+    const nextFn = vi.fn();
+    await (socketService as any).authenticateSocket(socketWithoutToken, nextFn);
+
+    expect(nextFn).toHaveBeenCalledWith(expect.any(Error));
+    const err = nextFn.mock.calls[0][0] as Error;
+    expect(err.message).toContain('token');
+
+    console.log('✅ TC_SOCKET_015: Calls next(Error) when no token');
   });
 
+
   /**
-   * [TC_SOCKET_019] Gửi notification với message rất dài
-   * Mục tiêu: Kiểm tra giới hạn độ dài message
-   * Input: message với 2000 ký tự
-   * Expected: Có thể pass hoặc fail
+   * [TC_SOCKET_016] authenticateSocket - token lấy từ Authorization header
+   * Mục tiêu: Kiểm tra middleware đọc token từ header Authorization
+   * Input: socket.handshake.headers.authorization = 'Bearer invalid'
+   * Expected: Cố gắng verify token, thất bại → next(Error)
    * CheckDB: Không truy cập DB
    * Rollback: Không cần
    */
-  it('[TC_SOCKET_019] should handle notification with very long message', async () => {
-    const veryLongMessage = 'B'.repeat(2000); // 2000 characters
-    const longMessageNotification = {
-      id: 14,
-      title: 'Long Message Test',
-      message: veryLongMessage,
-      type: 'promotion' as const,
-      created_at: new Date(),
-      sender: 'admin',
-      admin_id: 1
+  it('[TC_SOCKET_016] should read token from Authorization header as fallback', async () => {
+    const socketWithHeader = {
+      ...mockSocket,
+      handshake: {
+        auth: {},
+        headers: {
+          authorization: 'Bearer this.is.invalid'
+        }
+      }
     };
 
-    try {
-      socketService.sendNotificationToUser(44444, longMessageNotification);
-      console.log('⚠️ TC_SOCKET_019: Service accepts very long message');
-    } catch (error: any) {
-      console.log('✅ TC_SOCKET_019: Service validates message length (good)');
-    }
+    const nextFn = vi.fn();
+    await (socketService as any).authenticateSocket(socketWithHeader, nextFn);
+
+    // Token không hợp lệ → next được gọi với Error
+    expect(nextFn).toHaveBeenCalledWith(expect.any(Error));
+
+    console.log('✅ TC_SOCKET_016: Reads token from Authorization header');
   });
 
   /**
-   * [TC_SOCKET_020] Verify service structure and exports
-   * Mục tiêu: Kiểm tra service là object và có structure đúng
-   * Input: Không có
-   * Expected: socketService là object với các methods
+   * [TC_SOCKET_017] authenticateSocket - token user hợp lệ nhưng user không tồn tại trong DB
+   * Mục tiêu: Kiểm tra middleware gọi next(Error) khi User.findByPk trả về null
+   * Input: JWT hợp lệ với decoded.id, User.findByPk trả về null
+   * Expected: next được gọi với Error 'Người dùng không tồn tại'
+   * CheckDB: Mock User.findByPk trả về null
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_017] should call next with error when user not found in DB', async () => {
+    const jwt = await import('jsonwebtoken');
+    const fakeToken = jwt.sign({ id: 9999 }, process.env.JWT_SECRET || 'your-secret-key');
+
+    // Mock User model
+    const UserModule = await import('../models/User');
+    vi.spyOn(UserModule.default, 'findByPk').mockResolvedValue(null as any);
+
+    const socketWithValidToken = {
+      ...mockSocket,
+      handshake: {
+        auth: { token: fakeToken },
+        headers: {}
+      }
+    };
+
+    const nextFn = vi.fn();
+    await (socketService as any).authenticateSocket(socketWithValidToken, nextFn);
+
+    expect(nextFn).toHaveBeenCalledWith(expect.any(Error));
+    const err = nextFn.mock.calls[0][0] as Error;
+    expect(err.message).toContain('Người dùng không tồn tại');
+
+    console.log('✅ TC_SOCKET_017: Calls next(Error) when user not found');
+  });
+
+  /**
+   * [TC_SOCKET_018] authenticateSocket - token admin hợp lệ nhưng admin không tồn tại trong DB
+   * Mục tiêu: Kiểm tra middleware gọi next(Error) khi Admin.findByPk trả về null
+   * Input: JWT hợp lệ với decoded.adminId, Admin.findByPk trả về null
+   * Expected: next được gọi với Error 'Quản trị viên không tồn tại'
+   * CheckDB: Mock Admin.findByPk trả về null
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_018] should call next with error when admin not found in DB', async () => {
+    const jwt = await import('jsonwebtoken');
+    const fakeAdminToken = jwt.sign({ adminId: 8888 }, process.env.JWT_SECRET || 'your-secret-key');
+
+    const AdminModule = await import('../models/Admin');
+    vi.spyOn(AdminModule.default, 'findByPk').mockResolvedValue(null as any);
+
+    const socketWithAdminToken = {
+      ...mockSocket,
+      handshake: {
+        auth: { token: fakeAdminToken },
+        headers: {}
+      }
+    };
+
+    const nextFn = vi.fn();
+    await (socketService as any).authenticateSocket(socketWithAdminToken, nextFn);
+
+    expect(nextFn).toHaveBeenCalledWith(expect.any(Error));
+    const err = nextFn.mock.calls[0][0] as Error;
+    expect(err.message).toContain('Quản trị viên không tồn tại');
+
+    console.log('✅ TC_SOCKET_018: Calls next(Error) when admin not found');
+  });
+
+  /**
+   * [TC_SOCKET_019] authenticateSocket - token user hợp lệ, user tồn tại
+   * Mục tiêu: Kiểm tra middleware gán userId, userType và gọi next() không có lỗi
+   * Input: JWT hợp lệ với decoded.id=1, User.findByPk trả về user mock
+   * Expected: socket.userId=1, socket.userType='user', next() không có args
+   * CheckDB: Mock User.findByPk trả về mock user
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_019] should authenticate valid user token and call next()', async () => {
+    const jwt = await import('jsonwebtoken');
+    const userId = 1;
+    const fakeToken = jwt.sign({ id: userId }, process.env.JWT_SECRET || 'your-secret-key');
+
+    const UserModule = await import('../models/User');
+    vi.spyOn(UserModule.default, 'findByPk').mockResolvedValue({ id: userId, name: 'Test User' } as any);
+
+    const targetSocket = {
+      ...mockSocket,
+      handshake: {
+        auth: { token: fakeToken },
+        headers: {}
+      }
+    };
+
+    const nextFn = vi.fn();
+    await (socketService as any).authenticateSocket(targetSocket, nextFn);
+
+    // next() phải được gọi không có đối số (thành công)
+    expect(nextFn).toHaveBeenCalledWith();
+    expect(targetSocket.userId).toBe(userId);
+    expect(targetSocket.userType).toBe('user');
+
+    console.log('✅ TC_SOCKET_019: Authenticates valid user token successfully');
+  });
+
+  /**
+   * [TC_SOCKET_020] authenticateSocket - token admin hợp lệ, admin tồn tại
+   * Mục tiêu: Kiểm tra middleware gán userId, userType='admin' và gọi next() thành công
+   * Input: JWT hợp lệ với decoded.adminId=2, Admin.findByPk trả về admin mock
+   * Expected: socket.userId=2, socket.userType='admin', next() không có args
+   * CheckDB: Mock Admin.findByPk trả về mock admin
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_020] should authenticate valid admin token and call next()', async () => {
+    const jwt = await import('jsonwebtoken');
+    const adminId = 2;
+    const fakeAdminToken = jwt.sign({ adminId }, process.env.JWT_SECRET || 'your-secret-key');
+
+    const AdminModule = await import('../models/Admin');
+    vi.spyOn(AdminModule.default, 'findByPk').mockResolvedValue({ id: adminId, name: 'Test Admin' } as any);
+
+    const targetSocket = {
+      ...mockSocket,
+      handshake: {
+        auth: { token: fakeAdminToken },
+        headers: {}
+      }
+    };
+
+    const nextFn = vi.fn();
+    await (socketService as any).authenticateSocket(targetSocket, nextFn);
+
+    expect(nextFn).toHaveBeenCalledWith();
+    expect(targetSocket.userId).toBe(adminId);
+    expect(targetSocket.userType).toBe('admin');
+
+    console.log('✅ TC_SOCKET_020: Authenticates valid admin token successfully');
+  });
+
+  /**
+   * [TC_SOCKET_021] authenticateSocket - JWT payload không có id lẫn adminId
+   * Mục tiêu: Kiểm tra middleware gọi next(Error) khi payload không có id/adminId
+   * Input: JWT hợp lệ nhưng payload chỉ có { email: 'test@test.com' }
+   * Expected: next được gọi với Error 'Token không hợp lệ'
    * CheckDB: Không truy cập DB
    * Rollback: Không cần
    */
-  it('[TC_SOCKET_020] should have correct service structure', async () => {
-    expect(socketService).toBeDefined();
-    expect(typeof socketService).toBe('object');
+  it('[TC_SOCKET_021] should call next with error when token payload has no id or adminId', async () => {
+    const jwt = await import('jsonwebtoken');
+    const fakeToken = jwt.sign({ email: 'no-id@test.com' }, process.env.JWT_SECRET || 'your-secret-key');
 
-    // Verify all expected methods exist
-    const expectedMethods = [
-      'initialize',
-      'sendNotificationToUser',
-      'sendNotificationToAllUsers'
-    ];
+    const socketWithWeirdToken = {
+      ...mockSocket,
+      handshake: {
+        auth: { token: fakeToken },
+        headers: {}
+      }
+    };
 
-    for (const methodName of expectedMethods) {
-      expect(socketService).toHaveProperty(methodName);
-      expect(typeof (socketService as any)[methodName]).toBe('function');
-    }
+    const nextFn = vi.fn();
+    await (socketService as any).authenticateSocket(socketWithWeirdToken, nextFn);
 
-    console.log('✅ TC_SOCKET_020: Service structure verified');
+    expect(nextFn).toHaveBeenCalledWith(expect.any(Error));
+    const err = nextFn.mock.calls[0][0] as Error;
+    expect(err.message).toContain('Token không hợp lệ');
+
+    console.log('✅ TC_SOCKET_021: Calls next(Error) for token with no id/adminId');
   });
 });
