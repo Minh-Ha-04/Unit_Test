@@ -139,8 +139,6 @@ describe('[Feature 11] Notification Management - Complete Unit Tests', () => {
     expect(notificationInDb).not.toBeNull();
     expect(notificationInDb?.title).toBe(notificationTitle);
     expect(notificationInDb?.user_id).toBe(testUserId);
-
-    console.log(`✅ TC_NOTIF_001: Sent notification ID ${createdNotification.id}`);
   });
 
   /**
@@ -171,8 +169,6 @@ describe('[Feature 11] Notification Management - Complete Unit Tests', () => {
     // CheckDB: Verify no notification was created
     const notificationsAfter = await Notification.count();
     expect(notificationsAfter).toBe(notificationsBefore);
-
-    console.log('✅ TC_NOTIF_002: Correctly rejected non-existent user');
   });
 
   /**
@@ -213,8 +209,6 @@ describe('[Feature 11] Notification Management - Complete Unit Tests', () => {
     const notificationInDb = await Notification.findByPk(createdBroadcast.id);
     expect(notificationInDb).not.toBeNull();
     expect(notificationInDb?.user_id).toBeNull();
-
-    console.log(`✅ TC_NOTIF_003: Sent broadcast notification ID ${createdBroadcast.id}`);
   });
 
   /**
@@ -238,8 +232,6 @@ describe('[Feature 11] Notification Management - Complete Unit Tests', () => {
     for (const notification of userNotifications.notifications) {
       expect([testUserId, null]).toContain(notification.user_id);
     }
-
-    console.log(`✅ TC_NOTIF_004: Retrieved ${userNotifications.notifications.length} notifications, ${userNotifications.unreadCount} unread`);
   });
 
   /**
@@ -269,8 +261,6 @@ describe('[Feature 11] Notification Management - Complete Unit Tests', () => {
     if (unreadCountBefore > 0) {
       expect(notificationsAfter.unreadCount).toBeLessThan(unreadCountBefore);
     }
-
-    console.log(`✅ TC_NOTIF_005: Marked all as read (was ${unreadCountBefore} unread)`);
   });
 
 
@@ -296,8 +286,6 @@ describe('[Feature 11] Notification Management - Complete Unit Tests', () => {
     // CheckDB: Verify no notification created
     const notificationsAfter = await Notification.count();
     expect(notificationsAfter).toBe(notificationsBefore);
-
-    console.log('✅ TC_NOTIF_006: Correctly rejected invalid type');
   });
 
   /**
@@ -335,7 +323,146 @@ describe('[Feature 11] Notification Management - Complete Unit Tests', () => {
     // CheckDB: Verify all notifications were created
     const notificationsAfter = await Notification.count();
     expect(notificationsAfter).toBe(notificationsBefore + numberOfNotifications);
+  });
 
-    console.log(`✅ TC_NOTIF_007: Created ${numberOfNotifications} notifications successfully`);
+
+  /**
+   * [TC_NOTIF_008] Kiểm tra phân quyền: chỉ admin mới được gửi thông báo cho user
+   * Mục tiêu: Phát hiện lỗ hổng bảo mật – user thường có thể gửi thông báo giả mạo admin
+   * Input: Gọi sendNotificationToUser với adminId là user thường (không phải admin)
+   * Expected: Throw lỗi "Unauthorized" hoặc "Forbidden" (hiện tại không có → test sẽ FAIL)
+   * CheckDB: Không tạo notification mới
+   * Rollback: Không cần (fail)
+   */
+  it('[TC_NOTIF_008] should NOT allow non-admin to send notification (authorization missing)', async () => {
+    // Tạo user thường (không phải admin)
+    const hashedPassword = await bcrypt.hash('password123', 10);
+    const normalUser = await User.create({
+      username: 'normal_user_' + Date.now(),
+      email: 'normal_' + Date.now() + '@example.com',
+      password_hash: hashedPassword,
+      phone: '0909999999',
+      is_active: true
+    });
+    createdUsers.push(normalUser.id);
+
+    const notificationsBefore = await Notification.count();
+
+    await expect(
+      notificationService.sendNotificationToUser(
+        normalUser.id, // đây không phải admin, nhưng service vẫn cho phép
+        testUserId!,
+        {
+          title: 'Fake admin notification',
+          message: 'This should be blocked',
+          type: 'order'
+        }
+      )
+    ).rejects.toThrow(/unauthorized|forbidden|không có quyền/i);
+
+    // CheckDB: Không có notification mới được tạo
+    const notificationsAfter = await Notification.count();
+    expect(notificationsAfter).toBe(notificationsBefore);
+  });
+
+  /**
+   * [TC_NOTIF_009] Kiểm tra không cho user xem thông báo của người khác
+   * Mục tiêu: Phát hiện lỗ hổng – user A có thể xem thông báo của user B
+   * Input: User A gọi getUserNotifications(userId của user B)
+   * Expected: Throw lỗi "Access denied" hoặc chỉ trả về thông báo của chính user A
+   * CheckDB: Không thay đổi dữ liệu
+   * Rollback: Không cần
+   */
+  it('[TC_NOTIF_009] should NOT allow user to view another user\'s notifications (access control missing)', async () => {
+    // Tạo user A (người xem) và user B (nạn nhân)
+    const hashedPassword = await bcrypt.hash('password123', 10);
+    const userA = await User.create({
+      username: 'viewer_' + Date.now(),
+      email: 'viewer_' + Date.now() + '@example.com',
+      password_hash: hashedPassword,
+      phone: '0901111111',
+      is_active: true
+    });
+    createdUsers.push(userA.id);
+
+    const userB = await User.create({
+      username: 'victim_' + Date.now(),
+      email: 'victim_' + Date.now() + '@example.com',
+      password_hash: hashedPassword,
+      phone: '0902222222',
+      is_active: true
+    });
+    createdUsers.push(userB.id);
+
+    // Tạo một vài thông báo cho user B
+    const notif1 = await notificationService.sendNotificationToUser(
+      testAdminId!,
+      userB.id,
+      { title: 'For B 1', message: 'Secret', type: 'order' }
+    );
+    createdNotifications.push(notif1.id);
+    const notif2 = await notificationService.sendNotificationToUser(
+      testAdminId!,
+      userB.id,
+      { title: 'For B 2', message: 'Confidential', type: 'promotion' }
+    );
+    createdNotifications.push(notif2.id);
+
+    // User A cố gắng lấy thông báo của user B
+    await expect(
+      notificationService.getUserNotifications(userB.id)
+    ).rejects.toThrow(/access denied|unauthorized|không có quyền/i);
+  });
+
+  /**
+   * [TC_NOTIF_010] Kiểm tra không cho user đánh dấu đọc thông báo của người khác
+   * Mục tiêu: Phát hiện lỗ hổng – user A có thể đánh dấu đọc thông báo của user B
+   * Input: User A gọi markAllNotificationsAsRead(userId của user B)
+   * Expected: Throw lỗi "Access denied"
+   * CheckDB: Trạng thái đọc của user B không thay đổi
+   * Rollback: Không cần
+   */
+  it('[TC_NOTIF_010] should NOT allow user to mark another user\'s notifications as read (authorization missing)', async () => {
+    // Tạo user C và user D
+    const hashedPassword = await bcrypt.hash('password123', 10);
+    const userC = await User.create({
+      username: 'malicious_' + Date.now(),
+      email: 'malicious_' + Date.now() + '@example.com',
+      password_hash: hashedPassword,
+      phone: '0903333333',
+      is_active: true
+    });
+    createdUsers.push(userC.id);
+
+    const userD = await User.create({
+      username: 'target_' + Date.now(),
+      email: 'target_' + Date.now() + '@example.com',
+      password_hash: hashedPassword,
+      phone: '0904444444',
+      is_active: true
+    });
+    createdUsers.push(userD.id);
+
+    // Tạo thông báo cho user D và đảm bảo có vài thông báo chưa đọc
+    const notifD = await notificationService.sendNotificationToUser(
+      testAdminId!,
+      userD.id,
+      { title: 'Secret for D', message: 'Only D should read', type: 'order' }
+    );
+    createdNotifications.push(notifD.id);
+
+    // Lấy trạng thái đọc ban đầu của user D (chưa đọc)
+    const beforeState = await notificationService.getUserNotifications(userD.id);
+    const beforeUnread = beforeState.unreadCount;
+    expect(beforeUnread).toBeGreaterThan(0);
+
+    // User C cố gắng đánh dấu đọc tất cả thông báo của user D
+    await expect(
+      notificationService.markAllNotificationsAsRead(userD.id)
+    ).rejects.toThrow(/access denied|unauthorized|không có quyền/i);
+
+    // CheckDB: Trạng thái đọc của user D không thay đổi
+    const afterState = await notificationService.getUserNotifications(userD.id);
+    expect(afterState.unreadCount).toBe(beforeUnread);
   });
 });

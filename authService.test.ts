@@ -27,7 +27,7 @@ describe('[Feature 1] Authentication & Authorization - Complete Unit Tests', () 
   afterAll(async () => {
     // Cleanup: Xóa tất cả users đã tạo
     for (const userId of createdUsers) {
-      await User.destroy({ where: { id: userId } }).catch(() => {});
+      await User.destroy({ where: { id: userId } }).catch(() => { });
     }
     console.log('✅ Rollback complete: Đã xóa tất cả test users');
   });
@@ -61,7 +61,7 @@ describe('[Feature 1] Authentication & Authorization - Complete Unit Tests', () 
     createdUserId = result.user.id;
     createdUserPassword = registerData.password;
     createdUsers.push(createdUserId);
-    
+
     const dbUser = await User.findByPk(createdUserId);
     expect(dbUser).not.toBeNull();
     if (dbUser) {
@@ -540,28 +540,30 @@ describe('[Feature 1] Authentication & Authorization - Complete Unit Tests', () 
   });
 
   /**
-   * [TC_AUTH_024] Update profile với email trùng chính nó (nên thành công)
-   */
-  it('[TC_AUTH_024] should alow update profile with same email', async () => {
-    if (!createdUserId) {
-      throw new Error('User chưa được tạo');
-    }
+/**
+ * [TC_AUTH_024] updateProfile lỗi khi không có thay đổi thực tế
+ * Mục tiêu: Đảm bảo service throw lỗi khi cập nhật với dữ liệu giống cũ
+ * Input: userId, { avatar_url: giá trị hiện tại }
+ * Expected: Throw lỗi "Không thể cập nhật thông tin. Vui lòng thử lại." hoặc tương tự
+ * CheckDB: Không có thay đổi trong DB
+ * Rollback: Xóa user sau test
+ */
+  it('[TC_AUTH_024] should throw error when updating with same data (no actual change)', async () => {
+    const suffix = Date.now();
+    const user = await User.create({
+      username: `same_data_user_${suffix}`,
+      email: `same_${suffix}@test.com`,
+      password_hash: await bcrypt.hash('pass123', 10),
+      phone: '0900000004',
+      is_active: true,
+      avatar_url: 'old_avatar.jpg'
+    });
+    createdUsers.push(user.id);
 
-    const dbUser = await User.findByPk(createdUserId);
-    const currentEmail = dbUser?.email || '';
-
-    const updateData: UpdateProfileDTO = {
-      email: currentEmail,
-      phone: '0907777777'
-    };
-
-    const result = await authService.updateProfile(createdUserId, updateData);
-
-    expect(result).toBeDefined();
-    expect(result.email).toBe(currentEmail);
-    expect(result.phone).toBe('0907777777');
-
-    console.log('✅ TC_AUTH_024: Cho phép update với email không đổi');
+    // Kỳ vọng throw lỗi vì không có thay đổi
+    await expect(
+      authService.updateProfile(user.id, { avatar_url: 'old_avatar.jpg' })
+    ).rejects.toThrow(/Không thể cập nhật thông tin/);
   });
 
   /**
@@ -613,7 +615,7 @@ describe('[Feature 1] Authentication & Authorization - Complete Unit Tests', () 
    */
   it('[TC_AUTH_026] should fail reset password with non-existent OTP', async () => {
     const emailWithoutOTP = 'no_otp_' + Date.now() + '@example.com';
-    
+
     await expect(
       authService.resetPassword({
         email: emailWithoutOTP,
@@ -648,7 +650,7 @@ describe('[Feature 1] Authentication & Authorization - Complete Unit Tests', () 
   /**
    * [TC_AUTH_028] Forgot password với Google account
    */
-  it('[TC_AUTH_044] should fail forgot password for Google account', async () => {
+  it('[TC_AUTH_028] should fail forgot password for Google account', async () => {
     const googleEmail = 'google_forgot_' + Date.now() + '@example.com';
     const googleUser = await User.create({
       username: 'google_forgot_user',
@@ -666,5 +668,31 @@ describe('[Feature 1] Authentication & Authorization - Complete Unit Tests', () 
 
     console.log('✅ TC_AUTH_028: Từ chối forgot password cho Google account');
   });
+  /**
+ * TC_AUTH_029 - Update username trùng nhau 
+ */
+  it('[TC_AUTH_029] should prevent updating to an existing username', async () => {
+    const suffix = Date.now();
+    const userA = await User.create({
+      username: `user_a_${suffix}`,
+      email: `usera_${suffix}@test.com`,
+      password_hash: await bcrypt.hash('pass123', 10),
+      phone: '0900000001',
+      is_active: true
+    });
+    const userB = await User.create({
+      username: `user_b_${suffix}`,
+      email: `userb_${suffix}@test.com`,
+      password_hash: await bcrypt.hash('pass123', 10),
+      phone: '0900000002',
+      is_active: true
+    });
+    createdUsers.push(userA.id, userB.id);
+
+    await expect(
+      authService.updateProfile(userB.id, { username: userA.username })
+    ).rejects.toThrow('Tên người dùng đã được sử dụng');
+  });
+
 
 });

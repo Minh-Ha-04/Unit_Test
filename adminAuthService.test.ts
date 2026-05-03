@@ -78,8 +78,6 @@ describe('[Feature 9] Admin Authentication - Unit Tests (Improved)', () => {
   expect(dbAdmin).not.toBeNull();
   expect(dbAdmin?.email).toBe(testAdminEmail);
   expect(dbAdmin?.is_active).toBe(true);
-
-  console.log('✅ TC_ADMIN_AUTH_001 passed');
 });
 
   /**
@@ -93,8 +91,6 @@ describe('[Feature 9] Admin Authentication - Unit Tests (Improved)', () => {
         password: 'wrongpassword'
       })
     ).rejects.toThrow('Email hoặc mật khẩu không đúng');
-
-    console.log('✅ TC_ADMIN_AUTH_002 passed');
   });
 
   /**
@@ -107,9 +103,7 @@ describe('[Feature 9] Admin Authentication - Unit Tests (Improved)', () => {
         email: 'notfound_' + Date.now() + '@example.com',
         password: 'password123'
       })
-    ).rejects.toThrow();
-
-    console.log('✅ TC_ADMIN_AUTH_003 passed');
+    ).rejects.toThrow('Email hoặc mật khẩu không đúng');
   });
 
   /**
@@ -135,8 +129,6 @@ describe('[Feature 9] Admin Authentication - Unit Tests (Improved)', () => {
         password: 'password123'
       })
     ).rejects.toThrow('Tài khoản admin đã bị vô hiệu hóa');
-
-    console.log('✅ TC_ADMIN_AUTH_004 passed');
   });
 
   /**

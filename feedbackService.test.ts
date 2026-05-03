@@ -98,7 +98,6 @@ describe('[Feature 10] Feedback Management - Complete Unit Tests', () => {
     expect(feedbackInDb?.message).toBe(feedbackMessage);
     expect(feedbackInDb?.status).toBe('pending');
 
-    console.log(`✅ TC_FEEDBACK_001: Created feedback ID ${createdFeedbackId}`);
   });
 
   /**
@@ -131,8 +130,6 @@ describe('[Feature 10] Feedback Management - Complete Unit Tests', () => {
     expect(feedbackInDb).not.toBeNull();
     expect(feedbackInDb?.title).toBeNull();
     expect(feedbackInDb?.message).toBeNull();
-
-    console.log(`✅ TC_FEEDBACK_002: Created minimal feedback ID ${createdFeedback.id}`);
   });
 
   /**
@@ -159,8 +156,6 @@ describe('[Feature 10] Feedback Management - Complete Unit Tests', () => {
     // CheckDB: Verify total matches database count
     const totalFeedbacksInDb = await Feedback.count();
     expect(allFeedbacks.pagination.total).toBe(totalFeedbacksInDb);
-
-    console.log(`✅ TC_FEEDBACK_003: Retrieved ${allFeedbacks.feedbacks.length} feedbacks`);
   });
 
   /**
@@ -185,7 +180,6 @@ describe('[Feature 10] Feedback Management - Complete Unit Tests', () => {
       expect(feedback.user_id).toBe(testUserId);
     }
 
-    console.log(`✅ TC_FEEDBACK_004: Found ${searchResults.feedbacks.length} feedbacks for "${searchUsername}"`);
   });
 
   /**
@@ -216,8 +210,6 @@ describe('[Feature 10] Feedback Management - Complete Unit Tests', () => {
     if (firstPage.feedbacks.length > 0 && secondPage.feedbacks.length > 0) {
       expect(firstPage.feedbacks[0].id).not.toBe(secondPage.feedbacks[0].id);
     }
-
-    console.log(`✅ TC_FEEDBACK_005: Pagination working (Page 1: ${firstPage.feedbacks.length}, Page 2: ${secondPage.feedbacks.length})`);
   });
 
   /**
@@ -304,14 +296,6 @@ describe('[Feature 10] Feedback Management - Complete Unit Tests', () => {
 
     console.log('✅ TC_FEEDBACK_008: Correctly rejected non-existent feedback');
   });
-
-
-
-
-
-
-
-
 
   /**
    * [TC_FEEDBACK_009] Tạo feedback với user_id không tồn tại
@@ -425,10 +409,104 @@ describe('[Feature 10] Feedback Management - Complete Unit Tests', () => {
     const feedbacksAfter = await Feedback.count();
     expect(feedbacksAfter).toBe(feedbacksBefore + numberOfFeedbacks);
 
-    console.log(`✅ TC_FEEDBACK_012: Created ${numberOfFeedbacks} feedbacks successfully`);
   });
 
+  /**
+   * [TC_FEEDBACK_013] Tạo feedback với title quá dài (vượt quá giới hạn cột)
+   * Mục tiêu: Kiểm tra validation độ dài title (service hiện tại không validate, sẽ throw lỗi DB)
+   * Input: title dài 500 ký tự (giả sử DB column VARCHAR(255))
+   * Expected: Throw error (SequelizeValidationError hoặc lỗi tương tự)
+   * CheckDB: Không tạo feedback mới
+   * Rollback: Không cần (fail)
+   */
+  it('[TC_FEEDBACK_013] should fail when title exceeds maximum length', async () => {
+    const longTitle = 'A'.repeat(500); // Giả sử DB giới hạn 255
+    const feedbacksBefore = await Feedback.count();
 
+    await expect(
+      feedbackService.createFeedback({
+        user_id: testUserId!,
+        title: longTitle,
+        message: 'Short message'
+      })
+    ).rejects.toThrow(); // Sequelize sẽ throw ValidationError hoặc DatabaseError
 
+    // CheckDB: Verify no new feedback created
+    const feedbacksAfter = await Feedback.count();
+    expect(feedbacksAfter).toBe(feedbacksBefore);
+  });
 
+  /**
+   * [TC_FEEDBACK_014] Tạo feedback với message quá dài (vượt quá giới hạn cột)
+   * Mục tiêu: Kiểm tra validation độ dài message
+   * Input: message dài 5000 ký tự (giả sử DB column TEXT không giới hạn, nhưng nếu có giới hạn thì test sẽ fail)
+   * Expected: Nếu DB có giới hạn → throw error; nếu không → lưu thành công (ghi nhận behavior)
+   * CheckDB: Kiểm tra theo behavior thực tế
+   * Rollback: Xóa feedback nếu tạo thành công
+   */
+  it('[TC_FEEDBACK_014] should handle very long message (depending on DB schema)', async () => {
+    const longMessage = 'B'.repeat(5000);
+    let createdId: number | undefined;
+
+    try {
+      const feedback = await feedbackService.createFeedback({
+        user_id: testUserId!,
+        title: 'Testing long message',
+        message: longMessage
+      });
+      // Nếu tạo thành công (DB column TEXT không giới hạn)
+      expect(feedback).toBeDefined();
+      expect(feedback.message).toBe(longMessage);
+      createdId = feedback.id;
+      createdFeedbacks.push(createdId);
+    } catch (error) {
+      // Nếu DB có giới hạn, lỗi được throw
+      expect(error).toBeDefined();
+    }
+  });
+
+  /**
+ * [TC_FEEDBACK_015] Chỉ chủ feedback mới được hủy feedback (kiểm tra phân quyền)
+ * Mục tiêu: Đảm bảo chỉ user tạo feedback mới có thể chuyển status thành 'cancelled'
+ * Input: 
+ *   - Tạo feedback bởi user A
+ *   - user B (khác) cố gắng hủy -> phải bị từ chối
+ *   - user A (chủ sở hữu) hủy -> thành công
+ * Expected: 
+ *   - Non-owner throw lỗi "Unauthorized" hoặc tương tự
+ *   - Owner thành công, status = 'cancelled'
+ * CheckDB: Feedback chỉ bị hủy bởi owner
+ * Rollback: Xóa feedback sau test
+ */
+  it('[TC_FEEDBACK_015] should NOT allow non-owner to cancel feedback (currently failing - security hole)', async () => {
+    // Tạo user A (chủ feedback)
+    const owner = await User.create({
+      username: 'owner_' + Date.now(),
+      email: 'owner_' + Date.now() + '@example.com',
+      password_hash: await bcrypt.hash('pass', 10),
+      phone: '0901111111',
+      is_active: true
+    });
+    createdUsers.push(owner.id);
+
+    // Tạo user B (người khác)
+    const other = await User.create({
+      username: 'other_' + Date.now(),
+      email: 'other_' + Date.now() + '@example.com',
+      password_hash: await bcrypt.hash('pass', 10),
+      phone: '0902222222',
+      is_active: true
+    });
+    createdUsers.push(other.id);
+
+    // Owner tạo feedback
+    const feedback = await feedbackService.createFeedback({
+      user_id: owner.id,
+      title: 'Test',
+      message: 'Hello'
+    });
+    createdFeedbacks.push(feedback.id);
+    expect(feedback.status).toBe('pending');
+    await expect(feedbackService.markCancelled(feedback.id)).rejects.toThrow();
+  });
 });

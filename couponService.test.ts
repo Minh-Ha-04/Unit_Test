@@ -887,4 +887,92 @@ describe('[Feature 8] Coupon Management - Complete Unit Tests', () => {
 
     console.log('✅ TC_COUPON_022: Discount type switching handled');
   });
+    /**
+   * [TC_COUPON_023] Kiểm tra coupon hết lượt sử dụng dựa trên used count
+   * Mục tiêu: Kiểm tra coupon đã hết lượt sử dụng dựa trên usedCount (không chỉ dựa vào max_use).
+   * Input: Tạo coupon max_use=2, dùng 2 lần, gọi getCouponByCode lần thứ 3
+   * Expected: Ném lỗi "Mã giảm giá đã hết lượt sử dụng"
+   * CheckDB: Kiểm tra used count = 2, max_use=2, nhưng getCouponByCode vẫn cho phép (bug)
+   * Rollback: Xóa coupon, orders, usedCoupons trong afterAll
+   */
+  it('[TC_COUPON_023] should reject coupon when used count reaches max_use (currently fails)', async () => {
+    // 1. Tạo coupon với max_use = 2
+    const code = 'MAXUSE2_' + Date.now();
+    const coupon = await Coupon.create({
+      code,
+      discount_percent: 10,
+      discount_limit: 50000,
+      max_use: 2,
+      is_active: true
+    });
+    createdCoupons.push(coupon.id);
+
+    // 2. Tạo 2 orders và dùng coupon 2 lần
+    const user = await User.create({
+      username: 'test_user_' + Date.now(),
+      email: 'user_' + Date.now() + '@test.com',
+      password_hash: 'hash',
+      phone: '0900000000',
+      is_active: true
+    });
+    createdUsers.push(user.id);
+
+    for (let i = 0; i < 2; i++) {
+      const order = await Order.create({
+        user_id: user.id,
+        tour_id: 1,
+        quantity: 1,
+        total_price: 1000000,
+        status: 'confirmed',
+        payment_url: 'mock',
+        is_paid: true,
+        is_review: false,
+        start_date: new Date(),
+        end_date: new Date()
+      });
+      createdOrders.push(order.id);
+      await UsedCoupon.create({ coupon_id: coupon.id, order_id: order.id });
+    }
+
+    // 3. Kiểm tra getCouponByCode lần thứ 3 (sau khi đã dùng hết)
+    await expect(couponService.getCouponByCode(code)).rejects.toThrow('đã hết lượt sử dụng');
+  });
+
+  /**
+   * [TC_COUPON_024] Tạo coupon với max_use = 0 phải bị vô hiệu hóa ngay
+   * Mục tiêu: 	Kiểm tra coupon đã hết lượt sử dụng dựa trên usedCount (không chỉ dựa vào max_use).
+   * Input: max_use = 0
+   * Expected: Coupon có max_use = 0, và getCouponByCode phải ném lỗi "hết lượt"
+   * CheckDB: Kiểm tra max_use thực tế
+   * Rollback: Xóa coupon
+   */
+  it('[TC_COUPON_024] should create coupon with max_use=0 as invalid (currently sets to 100)', async () => {
+    const code = 'ZERO_MAX_CREATE_' + Date.now();
+    const createdCoupon = await couponService.createCoupon(testAdminId!, {
+      code,
+      discount_percent: 10,
+      discount_limit: 50000,
+      max_use: 0
+    });
+    createdCoupons.push(createdCoupon.id);
+
+    expect(Number(createdCoupon.max_use)).toBe(0);
+    
+    // Khi get coupon, phải throw lỗi hết lượt
+    await expect(couponService.getCouponByCode(code)).rejects.toThrow('đã hết lượt sử dụng');
+  });
+
+  /**
+   * [TC_COUPON_025] Update coupon không được set max_use âm
+   * Mục tiêu: Kiểm tra validation max_use >= 0
+   * Input: updateCoupon với max_use = -1
+   * Expected: Ném lỗi "max_use không thể âm"
+   * CheckDB: Không thay đổi coupon
+   * Rollback: Không cần
+   */
+  it('[TC_COUPON_025] should reject update with negative max_use', async () => {
+    if (!createdCouponId) throw new Error('No coupon');
+    await expect(couponService.updateCoupon(createdCouponId, { max_use: -5 }))
+      .rejects.toThrow('Số lượt sử dụng không thể là số âm');
+  });
 });

@@ -4,7 +4,7 @@ import User from '../models/User';
 import bcrypt from 'bcryptjs';
 
 /**
- * Feature 2: User Management - Optimized Unit Tests (25 cases, full coverage)
+ * Feature 2: User Management - Optimized Unit Tests (26 cases, full coverage)
  */
 describe('[Feature 2] User Management - Optimized Tests', () => {
   let createdUsers: number[] = [];
@@ -13,10 +13,12 @@ describe('[Feature 2] User Management - Optimized Tests', () => {
 
   beforeAll(async () => {
     console.log('👥 Bắt đầu kiểm thử Quản Lý Người Dùng...');
+
+    // Tạo user mặc định với timestamp để tránh trùng lặp
     const defaultPassword = await bcrypt.hash('default123', 10);
     const defaultUser = await User.create({
-      username: 'default_user',
-      email: 'default@example.com',
+      username: `default_user_${Date.now()}`,
+      email: `default_${Date.now()}@example.com`,
       password_hash: defaultPassword,
       phone: '0900000000',
       is_active: true,
@@ -25,9 +27,10 @@ describe('[Feature 2] User Management - Optimized Tests', () => {
     existingUserId = defaultUser.id;
     createdUsers.push(existingUserId);
 
+    // Tạo user public profile với timestamp
     const publicUser = await User.create({
-      username: 'public_profile_user',
-      email: 'public@example.com',
+      username: `public_profile_user_${Date.now()}`,
+      email: `public_${Date.now()}@example.com`,
       password_hash: await bcrypt.hash('public123', 10),
       phone: '0911111111',
       is_active: true,
@@ -44,8 +47,6 @@ describe('[Feature 2] User Management - Optimized Tests', () => {
     }
     console.log('✅ Rollback complete');
   });
-
-  // ========== getAllUsers() ==========
   /**
    * [TC_USER_001] Lấy danh sách users phân trang cơ bản
    * Mục tiêu: Kiểm tra getAllUsers với page=1, limit=10 trả về đúng cấu trúc
@@ -60,7 +61,26 @@ describe('[Feature 2] User Management - Optimized Tests', () => {
     expect(result.pagination.limit).toBe(10);
     expect(result.users.length).toBeLessThanOrEqual(10);
   });
-
+ /**
+   * [TC_USER_021] Thống kê cập nhật sau khi tạo user mới
+   * Mục tiêu: Kiểm tra tính chính xác của thống kê khi DB thay đổi
+   * Input: Tạo user mới
+   * Expected: total tăng 1, active tăng 1
+   * Rollback: User mới sẽ bị xóa
+   */
+  it('[TC_USER_021] should reflect new user in statistics', async () => {
+    const before = await userService.getTotalUsers();
+    const newUser = await User.create({
+      username: 'stats_' + Date.now(),
+      email: 'stats_' + Date.now() + '@example.com',
+      password_hash: await bcrypt.hash('pass', 10),
+      phone: '0955555555',
+      is_active: true
+    });
+    createdUsers.push(newUser.id);
+    const after = await userService.getTotalUsers();
+    expect(after.total).toBe(before.total + 1);
+  });
   /**
    * [TC_USER_002] Lọc users theo is_active=true
    * Mục tiêu: Kiểm tra filter hoạt động đúng
@@ -297,8 +317,6 @@ describe('[Feature 2] User Management - Optimized Tests', () => {
     });
     expect(updated.phone).toBe('0944444444');
   });
-
-  // ========== getTotalUsers() ==========
   /**
    * [TC_USER_020] Lấy thống kê số lượng users
    * Mục tiêu: Kiểm tra tổng, active, inactive đúng
@@ -311,28 +329,8 @@ describe('[Feature 2] User Management - Optimized Tests', () => {
     expect(stats.active + stats.inactive).toBe(stats.total);
   });
 
-  /**
-   * [TC_USER_021] Thống kê cập nhật sau khi tạo user mới
-   * Mục tiêu: Kiểm tra tính chính xác của thống kê khi DB thay đổi
-   * Input: Tạo user mới
-   * Expected: total tăng 1, active tăng 1
-   * Rollback: User mới sẽ bị xóa
-   */
-  it('[TC_USER_021] should reflect new user in statistics', async () => {
-    const before = await userService.getTotalUsers();
-    const newUser = await User.create({
-      username: 'stats_' + Date.now(),
-      email: 'stats_' + Date.now() + '@example.com',
-      password_hash: await bcrypt.hash('pass', 10),
-      phone: '0955555555',
-      is_active: true
-    });
-    createdUsers.push(newUser.id);
-    const after = await userService.getTotalUsers();
-    expect(after.total).toBe(before.total + 1);
-  });
+ 
 
-  // ========== getPublicProfile() ==========
   /**
    * [TC_USER_022] Lấy public profile theo username
    * Mục tiêu: Kiểm tra hàm trả về đúng user, không có password_hash
@@ -374,5 +372,20 @@ describe('[Feature 2] User Management - Optimized Tests', () => {
    */
   it('[TC_USER_025] should throw for non-existent userId', async () => {
     await expect(userService.getPublicProfile('9999999')).rejects.toThrow('Người dùng không tồn tại');
+  });
+
+  /**
+ * [TC_USER_026] updateUser không validate định dạng email
+ * Mục tiêu: Kiểm tra service nên từ chối email sai format
+ * Input: email = 'invalid-email'
+ * Expected: Throw lỗi (hiện tại không throw → test sẽ FAIL, báo cần sửa)
+ * CheckDB: Không thay đổi DB
+ * Rollback: Không cần
+ */
+  it('[TC_USER_026] should reject invalid email format when updating user', async () => {
+    // Sử dụng existingUserId đã được tạo trong beforeAll
+    await expect(
+      userService.updateUser(existingUserId!, { email: 'invalid-email' })
+    ).rejects.toThrow(/email|invalid|validation/i);
   });
 });

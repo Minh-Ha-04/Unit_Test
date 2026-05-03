@@ -42,7 +42,7 @@ describe('[Feature 12] Admin Management - Final Test Suite', () => {
 
   /**
    * ROLLBACK
-   * Đảm bảo DB quay về trạng thái ban đầu
+
    */
   afterAll(async () => {
     if (testAdminId) {

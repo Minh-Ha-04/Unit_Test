@@ -8,18 +8,25 @@ import reportService from '../services/reportService';
 describe('[Feature 16] Report Service - Optimized Unit Tests', () => {
   /**
    * [TC_REPORT_001] Get revenue stats with empty options
+   * Mục tiêu: Lấy thống kê doanh thu với bộ lọc rỗng (mặc định)
+   * Input: {}
+   * Expected: Trả về object chứa range, summary, breakdown
+   * CheckDB: Không thay đổi DB
+   * Rollback: Không cần
    */
   it('[TC_REPORT_001] should get revenue stats with empty options', async () => {
     const revenueStats = await reportService.getRevenueStats({});
-
     expect(revenueStats).toBeDefined();
     expect(typeof revenueStats).toBe('object');
-
-    console.log('✅ TC_REPORT_001: Retrieved revenue stats');
   });
 
   /**
    * [TC_REPORT_002] Get top tours with limit
+   * Mục tiêu: Lấy danh sách tour hàng đầu với giới hạn số lượng
+   * Input: { limit: 10 }
+   * Expected: Trả về { total, data } với data.length ≤ limit, mỗi item có rank, tour, totalRevenue, totalTickets, orderCount
+   * CheckDB: Không thay đổi DB
+   * Rollback: Không cần
    */
   it('[TC_REPORT_002] should get top tours with limit', async () => {
     const tourLimit = 10;
@@ -38,12 +45,15 @@ describe('[Feature 16] Report Service - Optimized Unit Tests', () => {
       expect(tour).toHaveProperty('totalTickets');
       expect(tour).toHaveProperty('orderCount');
     }
-
-    console.log(`✅ TC_REPORT_002: Retrieved ${topToursResult.data.length} top tours`);
   });
 
   /**
    * [TC_REPORT_003] Get top rated tours with limit
+   * Mục tiêu: Lấy danh sách tour đánh giá cao nhất
+   * Input: { limit: 10 }
+   * Expected: Mảng với length ≤ 10, mỗi phần tử có rank, tour, averageRating, reviewCount
+   * CheckDB: Không thay đổi DB
+   * Rollback: Không cần
    */
   it('[TC_REPORT_003] should get top rated tours with limit', async () => {
     const topRatedTours = await reportService.getTopRatedTours({ limit: 10 });
@@ -58,12 +68,15 @@ describe('[Feature 16] Report Service - Optimized Unit Tests', () => {
       expect(tour).toHaveProperty('averageRating');
       expect(tour).toHaveProperty('reviewCount');
     }
-
-    console.log(`✅ TC_REPORT_003: Retrieved ${topRatedTours.length} top rated tours`);
   });
 
   /**
    * [TC_REPORT_004] Get top users with limit
+   * Mục tiêu: Lấy danh sách khách hàng chi tiêu cao nhất
+   * Input: { limit: 10 }
+   * Expected: Trả về { total, data } với data.length ≤ 10, mỗi item có rank, user, totalSpent, orderCount
+   * CheckDB: Không thay đổi DB
+   * Rollback: Không cần
    */
   it('[TC_REPORT_004] should get top users with limit', async () => {
     const topUsersResult = await reportService.getTopUsers({ limit: 10 });
@@ -80,30 +93,35 @@ describe('[Feature 16] Report Service - Optimized Unit Tests', () => {
       expect(user).toHaveProperty('totalSpent');
       expect(user).toHaveProperty('orderCount');
     }
-
-    console.log(`✅ TC_REPORT_004: Retrieved ${topUsersResult.data.length} top users`);
   });
 
   /**
    * [TC_REPORT_005] Get revenue stats with date range and metric
+   * Mục tiêu: Lấy thống kê doanh thu theo khoảng thời gian cụ thể (tháng)
+   * Input: { range: 'month' }
+   * Expected: revenueStats được định nghĩa, có breakdown theo từng tháng
+   * CheckDB: Không thay đổi DB
+   * Rollback: Không cần
    */
   it('[TC_REPORT_005] should get revenue stats with date range and metric', async () => {
     const revenueStats = await reportService.getRevenueStats({
       range: 'month' as any
     });
-
     expect(revenueStats).toBeDefined();
-    console.log('✅ TC_REPORT_005: Retrieved revenue stats with filters');
   });
 
   /**
    * [TC_REPORT_006] Get top tours with search functionality
+   * Mục tiêu: Tìm kiếm tour theo từ khóa
+   * Input: { limit: 5, search: 'Tour' }
+   * Expected: Trả về { total, data } chỉ chứa tour có title/destination/tour_code chứa 'Tour'
+   * CheckDB: Không thay đổi DB
+   * Rollback: Không cần
    */
   it('[TC_REPORT_006] should get top tours with search filter', async () => {
-    // Test search that should find results
     const searchResult = await reportService.getTopTours({
       limit: 5,
-      search: 'Tour' // Common keyword
+      search: 'Tour'
     });
 
     expect(searchResult).toBeDefined();
@@ -111,16 +129,18 @@ describe('[Feature 16] Report Service - Optimized Unit Tests', () => {
     expect(searchResult).toHaveProperty('data');
     expect(Array.isArray(searchResult.data)).toBe(true);
 
-    // If search found results, verify they match search term
     if (searchResult.data.length > 0) {
       expect(searchResult.total).toBeGreaterThan(0);
     }
-
-    console.log(`✅ TC_REPORT_006: Search returned ${searchResult.data.length} results`);
   });
 
   /**
    * [TC_REPORT_007] Get top rated tours with minReviews filter
+   * Mục tiêu: Lọc tour đánh giá cao với số lượng review tối thiểu
+   * Input: { limit: 5, minReviews: 2 }
+   * Expected: Mảng tour có reviewCount ≥ 2
+   * CheckDB: Không thay đổi DB
+   * Rollback: Không cần
    */
   it('[TC_REPORT_007] should get top rated tours with minReviews', async () => {
     const topRatedTours = await reportService.getTopRatedTours({
@@ -131,22 +151,23 @@ describe('[Feature 16] Report Service - Optimized Unit Tests', () => {
     expect(topRatedTours).toBeDefined();
     expect(Array.isArray(topRatedTours)).toBe(true);
 
-    // All tours should have at least minReviews
     for (const tour of topRatedTours) {
       expect(tour.reviewCount).toBeGreaterThanOrEqual(2);
     }
-
-    console.log(`✅ TC_REPORT_007: Retrieved ${topRatedTours.length} tours with min 2 reviews`);
   });
 
   /**
    * [TC_REPORT_008] Get top users with search functionality
+   * Mục tiêu: Tìm kiếm khách hàng theo username/email/phone/id
+   * Input: { limit: 5, search: '@example.com' }
+   * Expected: Trả về { total, data } chỉ chứa user có email chứa '@example.com'
+   * CheckDB: Không thay đổi DB
+   * Rollback: Không cần
    */
   it('[TC_REPORT_008] should get top users with search filter', async () => {
-    // Test search by email pattern
     const searchResult = await reportService.getTopUsers({
       limit: 5,
-      search: '@example.com' // Common email domain
+      search: '@example.com'
     });
 
     expect(searchResult).toBeDefined();
@@ -157,12 +178,15 @@ describe('[Feature 16] Report Service - Optimized Unit Tests', () => {
     if (searchResult.data.length > 0) {
       expect(searchResult.total).toBeGreaterThan(0);
     }
-
-    console.log(`✅ TC_REPORT_008: User search returned ${searchResult.data.length} results`);
   });
 
   /**
    * [TC_REPORT_009] Top tours sorting verification
+   * Mục tiêu: Kiểm tra thứ tự sắp xếp của top tours (doanh thu giảm dần)
+   * Input: { limit: 10 }
+   * Expected: Doanh thu của tour đầu lớn hơn hoặc bằng tour sau
+   * CheckDB: Không thay đổi DB
+   * Rollback: Không cần
    */
   it('[TC_REPORT_009] should return top tours sorted by revenue', async () => {
     const topToursResult = await reportService.getTopTours({ limit: 10 });
@@ -174,8 +198,5 @@ describe('[Feature 16] Report Service - Optimized Unit Tests', () => {
         expect(prevRevenue).toBeGreaterThanOrEqual(currRevenue);
       }
     }
-
-    console.log('✅ TC_REPORT_009: Tours sorted correctly by revenue');
   });
-
 });

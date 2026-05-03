@@ -276,7 +276,6 @@ describe('[Feature 18] Tour Guide Assignment - Comprehensive Unit Tests', () => 
     // Khi chỉ có 1 trang, page=2 sẽ được điều chỉnh về 1
     expect(page2.pagination.page).toBe(1);
     expect(page2.pagination.limit).toBe(1);
-    console.log('✅ TC_GUIDE_012: Pagination page 2 works');
   });
 
   /**
@@ -504,8 +503,6 @@ describe('[Feature 18] Tour Guide Assignment - Comprehensive Unit Tests', () => 
     expect(Array.isArray(result.tours)).toBe(true);
     console.log('✅ TC_GUIDE_028: Sorted by quantity_client asc');
   });
-
-  // ==================== getOrdersByTourAssignment ====================
   /**
    * [TC_GUIDE_029] Lấy danh sách đơn hàng theo một tour assignment cụ thể
    * Mục tiêu: Kiểm tra hàm trả về orders được gán cho tour, guide, và khoảng thời gian

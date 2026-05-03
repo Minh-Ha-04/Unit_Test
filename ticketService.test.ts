@@ -674,5 +674,5 @@ describe('[Feature 6] Ticket Management - Complete Unit Tests', () => {
     expect(Array.isArray(allStatusTickets.tickets)).toBe(true);
 
     console.log(`✅ TC_TICKET_022: Retrieved ${allStatusTickets.tickets.length} tickets with status=all`);
-  });
+  });  
 });

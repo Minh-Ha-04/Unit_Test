@@ -706,4 +706,59 @@ describe('[Feature 17] Socket Service - Comprehensive Unit Tests', () => {
 
     console.log('✅ TC_SOCKET_021: Calls next(Error) for token with no id/adminId');
   });
+  /**
+ * [TC_SOCKET_022] Không cho phép user join room của user khác qua register event
+ * Mục tiêu: Phát hiện lỗ hổng bảo mật - user không thể join room của user khác
+ * Input: socket user (userId=10) gửi register { role: 'user', userId=20 }
+ * Expected: socket.join KHÔNG được gọi với 'user:20'
+ * CheckDB: Không thay đổi DB
+ * Rollback: Không cần
+ * Note: Test sẽ FAIL vì service hiện tại vẫn cho phép join (lỗ hổng)
+ */
+  it('[TC_SOCKET_022] should NOT allow user to join another user room via register', () => {
+    const joinSpy = vi.fn();
+    const socket = {
+      ...mockSocket,
+      userId: 10,
+      userType: 'user' as const,
+      join: joinSpy,
+      on: vi.fn((event: string, cb: Function) => {
+        if (event === 'register') {
+          cb({ role: 'user', userId: 20 });
+        }
+      })
+    };
+
+    (socketService as any).handleConnection(socket);
+
+    // Kỳ vọng không join room 'user:20'
+    expect(joinSpy).not.toHaveBeenCalledWith('user:20');
+  });
+
+  /**
+   * [TC_SOCKET_023] Không cho phép user thường tự xưng là admin qua register
+   * Mục tiêu: Phát hiện lỗ hổng - user không thể join admin room
+   * Input: socket user (userId=10) gửi register { role: 'admin', userId=5 }
+   * Expected: socket.join KHÔNG được gọi với 'admin:5'
+   * CheckDB: Không thay đổi DB
+   * Rollback: Không cần
+   */
+  it('[TC_SOCKET_023] should NOT allow user to join admin room via register', () => {
+    const joinSpy = vi.fn();
+    const socket = {
+      ...mockSocket,
+      userId: 10,
+      userType: 'user' as const,
+      join: joinSpy,
+      on: vi.fn((event: string, cb: Function) => {
+        if (event === 'register') {
+          cb({ role: 'admin', userId: 5 });
+        }
+      })
+    };
+
+    (socketService as any).handleConnection(socket);
+
+    expect(joinSpy).not.toHaveBeenCalledWith('admin:5');
+  });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import emailService from '../services/emailService';
 import Order from '../models/Order';
 import User from '../models/User';
@@ -7,11 +7,15 @@ import Ticket from '../models/Ticket';
 import Admin from '../models/Admin';
 import bcrypt from 'bcryptjs';
 
-// Mock nodemailer để không gửi email thật
+const { sendMailMock } = vi.hoisted(() => ({
+  sendMailMock: vi.fn().mockResolvedValue({ messageId: 'test-message-id' })
+}));
+
+// Mock nodemailer
 vi.mock('nodemailer', () => ({
   default: {
     createTransport: vi.fn(() => ({
-      sendMail: vi.fn().mockResolvedValue({ messageId: 'test-message-id' })
+      sendMail: sendMailMock
     }))
   }
 }));
@@ -23,26 +27,12 @@ vi.mock('google-auth-library', () => {
     getAccessToken: () => Promise.resolve('mock-access-token')
   };
   return {
-    OAuth2Client: function() {
+    OAuth2Client: function () {
       return mockOAuth2Client;
     }
   };
 });
 
-/**
- * Feature 13: Email Service - Comprehensive Unit Tests
- * ✅ Test Case IDs rõ ràng
- * ✅ CheckDB: Xác minh database queries
- * ✅ Rollback: Khôi phục DB sau tests
- * 
- * Services được test:
- * - sendPaymentConfirmationEmail()
- * - sendCancellationEmail()
- * - getOrderDetails() helper
- * - createTicketTableHTML() helper
- * - formatCurrency() helper
- * - formatDate() helper
- */
 describe('[Feature 13] Email Service - Comprehensive Unit Tests', () => {
   let testUserId: number | undefined;
   let testTourId: number | undefined;
@@ -53,9 +43,6 @@ describe('[Feature 13] Email Service - Comprehensive Unit Tests', () => {
   let createdTickets: number[] = [];
 
   beforeAll(async () => {
-    console.log('📧 Bắt đầu kiểm thử Email Service...');
-
-    // Tạo user test
     const hashedPassword = await bcrypt.hash('password123', 10);
     const user = await User.create({
       username: 'email_test_user',
@@ -67,7 +54,6 @@ describe('[Feature 13] Email Service - Comprehensive Unit Tests', () => {
     testUserId = user.id;
     createdUsers.push(testUserId);
 
-    // Tạo tour test
     const tour = await Tour.create({
       title: 'Email Test Tour ' + Date.now(),
       destination: 'HN',
@@ -85,8 +71,6 @@ describe('[Feature 13] Email Service - Comprehensive Unit Tests', () => {
   });
 
   afterAll(async () => {
-    console.log('🔄 Starting Rollback...');
-    
     for (const ticketId of createdTickets) {
       await Ticket.destroy({ where: { id: ticketId } }).catch(() => {});
     }
@@ -99,123 +83,36 @@ describe('[Feature 13] Email Service - Comprehensive Unit Tests', () => {
     for (const userId of createdUsers) {
       await User.destroy({ where: { id: userId } }).catch(() => {});
     }
-    
-    console.log('✅ Rollback complete: DB restored');
-  });
-  /**
-   * [TC_EMAIL_001] Kiểm tra email service tồn tại
-   * Mục tiêu: Verify emailService được export đúng
-   * Input: Không có
-   * Expected: emailService object tồn tại với các methods
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_EMAIL_001] should have email service methods', async () => {
-    // Verify service exists
-    expect(emailService).toBeDefined();
-    expect(typeof emailService).toBe('object');
-
-    console.log('✅ TC_EMAIL_001: Email service exists');
   });
 
-  /**
-   * [TC_EMAIL_002] Kiểm tra method sendPaymentConfirmationEmail tồn tại
-   * Mục tiêu: Verify method được export
-   * Input: Không có
-   * Expected: sendPaymentConfirmationEmail là function
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_EMAIL_002] should have sendPaymentConfirmationEmail method', async () => {
-    const methodName = 'sendPaymentConfirmationEmail';
-    
-    expect(typeof emailService[methodName]).toBe('function');
-
-    console.log(`✅ TC_EMAIL_002: ${methodName} method exists`);
+  // Reset mock trước mỗi test
+  beforeEach(() => {
+    sendMailMock.mockClear();
   });
 
-  /**
-   * [TC_EMAIL_003] Kiểm tra method sendCancellationEmail tồn tại
-   * Mục tiêu: Verify method được export
-   * Input: Không có
-   * Expected: sendCancellationEmail là function
-   * CheckDB: Không truy cập DB
-   * Rollback: Không cần
-   */
-  it('[TC_EMAIL_003] should have sendCancellationEmail method', async () => {
-    const methodName = 'sendCancellationEmail';
-    
-    expect(typeof emailService[methodName]).toBe('function');
-
-    console.log(`✅ TC_EMAIL_003: ${methodName} method exists`);
+  it('[TC_EMAIL_001] should fail when sending payment confirmation for non-existent order', async () => {
+    await expect(emailService.sendPaymentConfirmationEmail(9999999)).rejects.toThrow(
+      'Không tìm thấy đơn hàng'
+    );
   });
 
-  /**
-   * [TC_EMAIL_004] Gửi payment confirmation email với orderId không tồn tại
-   */
-  it('[TC_EMAIL_004] should fail when sending payment confirmation for non-existent order', async () => {
-    await expect(
-      emailService.sendPaymentConfirmationEmail(9999999)
-    ).rejects.toThrow('Không tìm thấy đơn hàng');
-
-    console.log('✅ TC_EMAIL_004: Correctly handled non-existent order');
+  it('[TC_EMAIL_002] should fail when sending cancellation for non-existent order', async () => {
+    await expect(emailService.sendCancellationEmail(9999999)).rejects.toThrow(
+      'Không tìm thấy đơn hàng'
+    );
   });
 
-  /**
-   * [TC_EMAIL_005] Gửi cancellation email với orderId không tồn tại
-   */
-  it('[TC_EMAIL_005] should fail when sending cancellation for non-existent order', async () => {
-    await expect(
-      emailService.sendCancellationEmail(9999999)
-    ).rejects.toThrow('Không tìm thấy đơn hàng');
-
-    console.log('✅ TC_EMAIL_005: Correctly handled non-existent order');
+  it('[TC_EMAIL_003] should fail with invalid orderId values', async () => {
+    await expect(emailService.sendPaymentConfirmationEmail(0)).rejects.toThrow();
+    await expect(emailService.sendPaymentConfirmationEmail(-1)).rejects.toThrow();
+    await expect(emailService.sendCancellationEmail(-1)).rejects.toThrow();
+    await expect(emailService.sendPaymentConfirmationEmail(null as any)).rejects.toThrow();
+    await expect(emailService.sendCancellationEmail(null as any)).rejects.toThrow();
+    await expect(emailService.sendPaymentConfirmationEmail(undefined as any)).rejects.toThrow();
+    await expect(emailService.sendCancellationEmail(undefined as any)).rejects.toThrow();
   });
 
-  /**
-   * [TC_EMAIL_006] Gộp các invalid orderId tests
-   */
-  it('[TC_EMAIL_006] should fail with invalid orderId values', async () => {
-    // Test zero
-    await expect(
-      emailService.sendPaymentConfirmationEmail(0)
-    ).rejects.toThrow();
-
-    // Test negative
-    await expect(
-      emailService.sendPaymentConfirmationEmail(-1)
-    ).rejects.toThrow();
-
-    await expect(
-      emailService.sendCancellationEmail(-1)
-    ).rejects.toThrow();
-
-    // Test null
-    await expect(
-      emailService.sendPaymentConfirmationEmail(null as any)
-    ).rejects.toThrow();
-
-    await expect(
-      emailService.sendCancellationEmail(null as any)
-    ).rejects.toThrow();
-
-    // Test undefined
-    await expect(
-      emailService.sendPaymentConfirmationEmail(undefined as any)
-    ).rejects.toThrow();
-
-    await expect(
-      emailService.sendCancellationEmail(undefined as any)
-    ).rejects.toThrow();
-
-    console.log('✅ TC_EMAIL_006: All invalid orderId cases handled');
-  });
-
-  /**
-   * [TC_EMAIL_007] Gửi payment confirmation email thành công (với mock)
-   */
-  it('[TC_EMAIL_007] should send payment confirmation email successfully', async () => {
-    // Tạo order
+  it('[TC_EMAIL_004] should send payment confirmation email successfully', async () => {
     const order = await Order.create({
       user_id: testUserId,
       tour_id: testTourId,
@@ -231,7 +128,6 @@ describe('[Feature 13] Email Service - Comprehensive Unit Tests', () => {
     createdOrders.push(order.id);
     testOrderId = order.id;
 
-    // Tạo tickets
     const ticket1 = await Ticket.create({
       order_id: order.id,
       user_id: testUserId!,
@@ -250,31 +146,32 @@ describe('[Feature 13] Email Service - Comprehensive Unit Tests', () => {
     });
     createdTickets.push(ticket2.id);
 
-    // Send email (sẽ dùng mock)
     await emailService.sendPaymentConfirmationEmail(order.id);
 
-    console.log('✅ TC_EMAIL_007: Payment confirmation email sent successfully');
+    expect(sendMailMock).toHaveBeenCalledTimes(1);
+    expect(sendMailMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: expect.stringContaining('@example.com'),
+        subject: expect.stringContaining('Xác nhận thanh toán'),
+        html: expect.stringContaining('Email Test Tour')
+      })
+    );
   });
 
-  /**
-   * [TC_EMAIL_008] Gửi cancellation email thành công (với mock)
-   */
-  it('[TC_EMAIL_008] should send cancellation email successfully', async () => {
-    if (!testOrderId) {
-      throw new Error('Order chưa được tạo');
-    }
+  it('[TC_EMAIL_005] should send cancellation email successfully', async () => {
+    if (!testOrderId) throw new Error('Order chưa được tạo');
 
-    // Send cancellation email (sẽ dùng mock)
     await emailService.sendCancellationEmail(testOrderId);
 
-    console.log('✅ TC_EMAIL_008: Cancellation email sent successfully');
+    expect(sendMailMock).toHaveBeenCalledTimes(1);
+    const callArg = sendMailMock.mock.calls[0][0];
+    expect(callArg.to).toContain('@example.com');
+    expect(callArg.subject).toContain('Đơn hàng đã bị hủy');
+    expect(callArg.html).toContain('Đơn hàng của bạn với mã');
+    expect(callArg.html).toContain('Email Test Tour');
   });
 
-  /**
-   * [TC_EMAIL_009] Gửi payment confirmation với order có guide
-   */
-  it('[TC_EMAIL_009] should send payment confirmation with guide info', async () => {
-    // Tạo admin/guide
+  it('[TC_EMAIL_006] should send payment confirmation with guide info', async () => {
     const hashedPassword = await bcrypt.hash('password123', 10);
     const guideEmail = 'guide_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9) + '@example.com';
     const guide = await Admin.create({
@@ -286,7 +183,6 @@ describe('[Feature 13] Email Service - Comprehensive Unit Tests', () => {
       is_active: true
     });
 
-    // Tạo order với guide_id
     const orderWithGuide = await Order.create({
       user_id: testUserId,
       tour_id: testTourId,
@@ -302,20 +198,16 @@ describe('[Feature 13] Email Service - Comprehensive Unit Tests', () => {
     });
     createdOrders.push(orderWithGuide.id);
 
-    // Send email
     await emailService.sendPaymentConfirmationEmail(orderWithGuide.id);
 
-    // Cleanup guide
-    await Admin.destroy({ where: { id: guide.id } }).catch(() => {});
+    const lastCall = sendMailMock.mock.calls[sendMailMock.mock.calls.length - 1][0];
+    expect(lastCall.html).toContain('hướng dẫn viên');
+    expect(lastCall.html).toContain(guide.username);
 
-    console.log('✅ TC_EMAIL_009: Payment confirmation with guide sent');
+    await Admin.destroy({ where: { id: guide.id } }).catch(() => {});
   });
 
-  /**
-   * [TC_EMAIL_010] Gửi email với order không có tickets
-   */
-  it('[TC_EMAIL_010] should send email when order has no tickets', async () => {
-    // Tạo order mới không có tickets
+  it('[TC_EMAIL_007] should send email when order has no tickets', async () => {
     const orderNoTickets = await Order.create({
       user_id: testUserId,
       tour_id: testTourId,
@@ -330,20 +222,18 @@ describe('[Feature 13] Email Service - Comprehensive Unit Tests', () => {
     });
     createdOrders.push(orderNoTickets.id);
 
-    // Send payment confirmation (không có tickets)
+    // Payment confirmation email
     await emailService.sendPaymentConfirmationEmail(orderNoTickets.id);
+    let lastCall = sendMailMock.mock.calls[sendMailMock.mock.calls.length - 1][0];
+    expect(lastCall.html).toContain('Vé của bạn sẽ được cập nhật trong ít phút');
 
-    // Send cancellation (không có tickets)
+    // Cancellation email
     await emailService.sendCancellationEmail(orderNoTickets.id);
-
-    console.log('✅ TC_EMAIL_010: Emails sent without tickets');
+    lastCall = sendMailMock.mock.calls[sendMailMock.mock.calls.length - 1][0];
+    expect(lastCall.html).toContain('Không có vé nào được tạo cho đơn hàng này');
   });
 
-  /**
-   * [TC_EMAIL_011] Gửi email với tour destination null
-   */
-  it('[TC_EMAIL_011] should handle tour with null destination', async () => {
-    // Tạo tour không có destination
+  it('[TC_EMAIL_008] should handle tour with null destination', async () => {
     const tourNoDest = await Tour.create({
       title: 'No Destination Tour ' + Date.now(),
       departure: 'HCM',
@@ -371,9 +261,47 @@ describe('[Feature 13] Email Service - Comprehensive Unit Tests', () => {
     });
     createdOrders.push(order.id);
 
-    // Send email (destination sẽ là 'Đang cập nhật')
     await emailService.sendPaymentConfirmationEmail(order.id);
-
-    console.log('✅ TC_EMAIL_011: Handled null destination');
+    const lastCall = sendMailMock.mock.calls[sendMailMock.mock.calls.length - 1][0];
+    expect(lastCall.html).toContain('Đang cập nhật'); // destination fallback
   });
+  /**
+ * [TC_EMAIL_009] Phát hiện XSS: kiểm tra dữ liệu có được escape không
+ */
+it('[TC_EMAIL_009] should escape HTML special characters to prevent XSS', async () => {
+  const maliciousUsername = '<script>alert("XSS")</script>';
+  const hashedPassword = await bcrypt.hash('password123', 10);
+  const maliciousUser = await User.create({
+    username: maliciousUsername,
+    email: 'xss_test@example.com',
+    password_hash: hashedPassword,
+    phone: '0901111111',
+    is_active: true
+  });
+  createdUsers.push(maliciousUser.id);
+
+  const order = await Order.create({
+    user_id: maliciousUser.id,
+    tour_id: testTourId!,
+    quantity: 1,
+    total_price: 1000000,
+    status: 'confirmed',
+    is_paid: true,
+    is_review: false,
+    payment_url: 'http://test.com',
+    start_date: new Date(),
+    end_date: new Date()
+  });
+  createdOrders.push(order.id);
+
+  await emailService.sendPaymentConfirmationEmail(order.id);
+
+  const lastCall = sendMailMock.mock.calls[sendMailMock.mock.calls.length - 1][0];
+  const html = lastCall.html;
+
+  expect(html).not.toContain('<script>');
+  expect(html).toContain('&lt;script&gt;alert("XSS")&lt;/script&gt;');
+});
+
+
 });
